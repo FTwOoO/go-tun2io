@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 )
 
-type Device struct {
+type TunDevice struct {
 	Tunnels       map[uint32]*TcpTunnel
 	TunnelMu      sync.Mutex
 	defaultDialer Dialer
@@ -32,8 +32,8 @@ type Device struct {
 	closed        int
 }
 
-func NewDevice(addr net.IP, mask net.IPMask, dialer Dialer) (d *Device, err error) {
-	d = &Device{
+func NewDevice(addr net.IP, mask net.IPMask, dialer Dialer) (d *TunDevice, err error) {
+	d = &TunDevice{
 		Tunnels : make(map[uint32]*TcpTunnel),
 		defaultDialer:dialer,
 		readChan: make(chan []byte, 1024),
@@ -44,22 +44,22 @@ func NewDevice(addr net.IP, mask net.IPMask, dialer Dialer) (d *Device, err erro
 	return d, nil
 }
 
-func (d *Device)Dialer() Dialer {
+func (d *TunDevice)Dialer() Dialer {
 	return d.defaultDialer
 }
 
-func (d *Device)Close() {
+func (d *TunDevice)Close() {
 	atomic.StoreInt32(&d.closed, 1)
 	cLwipDestrop()
 	close(d.readChan)
 }
 
-func (d *Device)Write(b []byte) {
+func (d *TunDevice)Write(b []byte) {
 	//TODO
 	cLwipWrite(b)
 }
 
-func (d *Device)Read() (b []byte, err error) {
+func (d *TunDevice)Read() (b []byte, err error) {
 	if d.closed {
 		return nil, errDeviceClosed
 	}
