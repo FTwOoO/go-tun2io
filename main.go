@@ -12,7 +12,6 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -24,70 +23,23 @@ import (
 	"github.com/FTwOoO/netstack/tcpip/network/ipv6"
 	"github.com/FTwOoO/netstack/tcpip/stack"
 	"github.com/FTwOoO/netstack/tcpip/transport/tcp"
-	"github.com/FTwOoO/netstack/waiter"
 )
 
-func echo(wq *waiter.Queue, ep tcpip.Endpoint) {
-	defer ep.Close()
-
-	// Create wait queue entry that notifies a channel.
-	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
-
-	wq.EventRegister(&waitEntry, waiter.EventIn)
-	defer wq.EventUnregister(&waitEntry)
-
-	for {
-		v, err := ep.Read(nil)
-		if err != nil {
-			if err == tcpip.ErrWouldBlock {
-				<-notifyCh
-				continue
-			}
-
-			return
-		}
-
-		ep.Write(v, nil)
-	}
-}
-
 func main() {
-	if len(os.Args) != 4 {
-		log.Fatal("Usage: ", os.Args[0], " <tun-device> <local-address> <local-port>")
+	if len(os.Args) != 3 {
+		log.Fatal("Usage: ", os.Args[0], " <tun-device> <local-address>")
 	}
 
 	tunName := os.Args[1]
 	addrName := os.Args[2]
-	portName := os.Args[3]
 
 	rand.Seed(time.Now().UnixNano())
 
 	// Parse the IP address. Support both ipv4 and ipv6.
-	parsedAddr := net.ParseIP(addrName)
-	if parsedAddr == nil {
+	parsedAddr, _, err := net.ParseCIDR(addrName)
+	if err != nil {
 		log.Fatalf("Bad IP address: %v", addrName)
 	}
-
-	var addr tcpip.Address
-	var proto tcpip.NetworkProtocolNumber
-	if parsedAddr.To4() != nil {
-		addr = tcpip.Address(parsedAddr.To4())
-		proto = ipv4.ProtocolNumber
-	} else if parsedAddr.To16() != nil {
-		addr = tcpip.Address(parsedAddr.To16())
-		proto = ipv6.ProtocolNumber
-	} else {
-		log.Fatalf("Unknown IP type: %v", addrName)
-	}
-
-	localPort, err := strconv.Atoi(portName)
-	if err != nil {
-		log.Fatalf("Unable to convert port %v: %v", portName, err)
-	}
-
-	// Create the stack with ip and tcp protocols, then add a tun-based
-	// NIC and address.
-	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName})
 
 	mtu, err := rawfile.GetMTU(tunName)
 	if err != nil {
@@ -98,6 +50,33 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	_ = CreateStackWithFd(parsedAddr, fd, mtu)
+
+	for {
+		time.Sleep(5 * time.Second)
+	}
+
+}
+
+func CreateStackWithFd(mainAddr net.IP, fd int, mtu int) tcpip.Stack {
+	var addr tcpip.Address
+	var proto tcpip.NetworkProtocolNumber
+
+	if mainAddr.To4() != nil {
+		addr = tcpip.Address(mainAddr.To4())
+		proto = ipv4.ProtocolNumber
+	} else if mainAddr.To16() != nil {
+		addr = tcpip.Address(mainAddr.To16())
+		proto = ipv6.ProtocolNumber
+	} else {
+		log.Fatalf("Unknown IP type: %v", mainAddr)
+	}
+
+
+	// Create the stack with ip and tcp protocols, then add a tun-based
+	// NIC and address.
+	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName})
 
 	linkID := fdbased.New(fd, mtu, nil)
 	if err := s.CreateNIC(1, linkID); err != nil {
@@ -120,39 +99,5 @@ func main() {
 		},
 	})
 
-	// Create TCP endpoint, bind it, then start listening.
-	var wq waiter.Queue
-	ep, err := s.NewEndpoint(tcp.ProtocolNumber, proto, &wq)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer ep.Close()
-
-	if err := ep.Bind(tcpip.FullAddress{0, addr, uint16(localPort)}, nil); err != nil {
-		log.Fatal("Bind failed: ", err)
-	}
-
-	if err := ep.Listen(10); err != nil {
-		log.Fatal("Listen failed: ", err)
-	}
-
-	// Wait for connections to appear.
-	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
-	wq.EventRegister(&waitEntry, waiter.EventIn)
-	defer wq.EventUnregister(&waitEntry)
-
-	for {
-		n, wq, err := ep.Accept()
-		if err != nil {
-			if err == tcpip.ErrWouldBlock {
-				<-notifyCh
-				continue
-			}
-
-			log.Fatal("Accept() failed:", err)
-		}
-
-		go echo(wq, n)
-	}
+	return s
 }
