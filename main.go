@@ -23,6 +23,7 @@ import (
 	"github.com/FTwOoO/netstack/tcpip/network/ipv6"
 	"github.com/FTwOoO/netstack/tcpip/stack"
 	"github.com/FTwOoO/netstack/tcpip/transport/tcp"
+	"github.com/FTwOoO/netstack/waiter"
 )
 
 func main() {
@@ -83,7 +84,7 @@ func CreateStackWithFd(mainAddr net.IP, fd int, mtu int) tcpip.Stack {
 		log.Fatal(err)
 	}
 
-	s.SetForwardMode(true)
+	s.SetForwardMode(true, echo, nil)
 
 	if err := s.AddAddress(1, proto, addr); err != nil {
 		log.Fatal(err)
@@ -101,3 +102,31 @@ func CreateStackWithFd(mainAddr net.IP, fd int, mtu int) tcpip.Stack {
 
 	return s
 }
+
+
+
+
+func echo(wq *waiter.Queue, ep tcpip.Endpoint) {
+	defer ep.Close()
+
+	// Create wait queue entry that notifies a channel.
+	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
+
+	wq.EventRegister(&waitEntry, waiter.EventIn)
+	defer wq.EventUnregister(&waitEntry)
+
+	for {
+		v, err := ep.Read(nil)
+		if err != nil {
+			if err == tcpip.ErrWouldBlock {
+				<-notifyCh
+				continue
+			}
+
+			return
+		}
+
+		ep.Write(v, nil)
+	}
+}
+
