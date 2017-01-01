@@ -16,16 +16,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/link/fdbased"
-	"github.com/google/netstack/tcpip/link/rawfile"
-	"github.com/google/netstack/tcpip/link/tun"
-	"github.com/google/netstack/tcpip/network/ipv4"
-	"github.com/google/netstack/tcpip/network/ipv6"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/tcpip/transport/tcp"
-	"github.com/google/netstack/waiter"
-	"github.com/FTwOoO/vpncore/tuntap"
+	"github.com/FTwOoO/netstack/tcpip"
+	"github.com/FTwOoO/netstack/tcpip/link/fdbased"
+	"github.com/FTwOoO/netstack/tcpip/link/rawfile"
+	"github.com/FTwOoO/netstack/tcpip/link/tun"
+	"github.com/FTwOoO/netstack/tcpip/network/ipv4"
+	"github.com/FTwOoO/netstack/tcpip/network/ipv6"
+	"github.com/FTwOoO/netstack/tcpip/stack"
+	"github.com/FTwOoO/netstack/tcpip/transport/tcp"
+	"github.com/FTwOoO/netstack/waiter"
 )
 
 func echo(wq *waiter.Queue, ep tcpip.Endpoint) {
@@ -105,6 +104,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	s.SetForwardMode(true)
+
 	if err := s.AddAddress(1, proto, addr); err != nil {
 		log.Fatal(err)
 	}
@@ -128,7 +129,7 @@ func main() {
 
 	defer ep.Close()
 
-	if err := ep.Bind(tcpip.FullAddress{0, "", uint16(localPort)}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{0, addr, uint16(localPort)}, nil); err != nil {
 		log.Fatal("Bind failed: ", err)
 	}
 
@@ -152,7 +153,6 @@ func main() {
 			log.Fatal("Accept() failed:", err)
 		}
 
-		log.Printf("New connection from %s to %s\n", n.GetLocalAddress(), n.GetRemoteAddress())
 		go echo(wq, n)
 	}
 }
