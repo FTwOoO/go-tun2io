@@ -18,7 +18,6 @@ package tun2io
 
 import (
 	"errors"
-	"net"
 	"time"
 	"github.com/FTwOoO/netstack/tcpip"
 )
@@ -44,11 +43,7 @@ const (
 	readBufSize = 1024 * 64
 )
 
-type Dialer func(proto, addr string) (net.Conn, error)
 
-func TcpDirectDialer(proto, addr string) (net.Conn, error) {
-	return net.Dial(proto, addr)
-}
 
 type TransportID struct {
 	// srcPort is the src port from client

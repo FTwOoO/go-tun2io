@@ -23,12 +23,12 @@ import (
 	"sync"
 	"log"
 	"time"
+	"golang.org/x/net/proxy"
 )
-
 
 type Tun2ioManager struct {
 	stack         tcpip.Stack
-	defaultDialer Dialer
+	defaultDialer proxy.Dialer
 
 	tcpTunnelsMu  sync.Mutex
 	tcpTunnels    map[TransportID]*TcpTunnel
@@ -37,7 +37,7 @@ type Tun2ioManager struct {
 	udpTunnels    map[TransportID]*UdpTunnel
 }
 
-func NewTun2ioManager(s tcpip.Stack, defaultDialer Dialer) (*Tun2ioManager, error) {
+func NewTun2ioManager(s tcpip.Stack, defaultDialer proxy.Dialer) (*Tun2ioManager, error) {
 
 	m := &Tun2ioManager{
 		stack:s,
@@ -50,7 +50,7 @@ func NewTun2ioManager(s tcpip.Stack, defaultDialer Dialer) (*Tun2ioManager, erro
 	return m, nil
 }
 
-func  (m *Tun2ioManager) MainLoop() {
+func (m *Tun2ioManager) MainLoop() {
 	for {
 		time.Sleep(5 * time.Second)
 	}
@@ -61,6 +61,7 @@ func (m *Tun2ioManager) tcpCallback(wq *waiter.Queue, ep tcpip.Endpoint) {
 	tunnel, err := NewTcpTunnel(wq, ep, m.defaultDialer, m.tcpEndpointClosed)
 	if err != nil {
 		log.Print(err)
+		ep.Close()
 		return
 	}
 

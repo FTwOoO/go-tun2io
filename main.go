@@ -22,11 +22,13 @@ import (
 	"net"
 	"os"
 	"time"
-
 	"github.com/FTwOoO/netstack/tcpip/link/rawfile"
 	"github.com/FTwOoO/netstack/tcpip/link/tun"
 	"./tun2io"
+	"github.com/armon/go-socks5"
 )
+
+const socksAddr = "45.76.196.181:1080"
 
 func main() {
 	if len(os.Args) != 3 {
@@ -59,14 +61,34 @@ func main() {
 		log.Fatal(err)
 	}
 
-	s, err := tun2io.CreateStack(parsedAddr, linkId)
+	stack, err := tun2io.CreateStack(parsedAddr, linkId)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	manager, err := tun2io.NewTun2ioManager(s, tun2io.TcpDirectDialer)
+	dialer, err := tun2io.NewSOCKS5Dialer("tcp", socksAddr, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go createSocks5Server(socksAddr)
+
+	manager, err := tun2io.NewTun2ioManager(stack, dialer)
 	manager.MainLoop()
 }
 
 
 
+func createSocks5Server(addr string) {
+
+	conf := &socks5.Config{}
+	server, err := socks5.New(conf)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := server.ListenAndServe("tcp", addr); err != nil {
+		panic(err)
+	}
+
+}

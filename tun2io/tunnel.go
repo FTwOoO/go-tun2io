@@ -23,6 +23,7 @@ import (
 	"time"
 	"github.com/FTwOoO/netstack/tcpip"
 	"github.com/FTwOoO/netstack/waiter"
+	"golang.org/x/net/proxy"
 	"log"
 	"fmt"
 )
@@ -50,7 +51,7 @@ type TcpTunnel struct {
 	quitOne          sync.Once
 }
 
-func NewTcpTunnel(wq *waiter.Queue, ep tcpip.Endpoint, dialFn Dialer, closeCallback func(TransportID)) (*TcpTunnel, error) {
+func NewTcpTunnel(wq *waiter.Queue, ep tcpip.Endpoint, dialer proxy.Dialer, closeCallback func(TransportID)) (*TcpTunnel, error) {
 	srcAddr, _ := ep.GetRemoteAddress()
 	remoteAddr, _ := ep.GetLocalAddress()
 
@@ -70,7 +71,7 @@ func NewTcpTunnel(wq *waiter.Queue, ep tcpip.Endpoint, dialFn Dialer, closeCallb
 	var err error
 	tcpTargetAddr := fmt.Sprintf("%s:%d", id.RemoteAddress, id.RemotePort)
 	log.Printf("Try to connect to %s by proto %s\n", tcpTargetAddr, "tcp")
-	if t.connOut, err = dialFn("tcp", tcpTargetAddr); err != nil {
+	if t.connOut, err = dialer.Dial("tcp", tcpTargetAddr); err != nil {
 		t.SetStatus(StatusConnectionFailed)
 		return nil, err
 	}
