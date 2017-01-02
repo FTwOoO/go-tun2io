@@ -1,58 +1,76 @@
+/*
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Author: FTwOoO <booobooob@gmail.com>
+ */
 package tun2io
 
 import (
-	"fmt"
-	"golang.org/x/net/context"
 	"net"
+	"golang.org/x/net/context"
 	"sync"
 	"time"
-	"unsafe"
-	"bytes"
+	"github.com/FTwOoO/netstack/tcpip"
+	"github.com/FTwOoO/netstack/waiter"
+	"log"
+	"fmt"
 )
 
-/*
-
-#include "device.c"
-
-*/
-
-import "C"
-
-type TcpTunnel struct {
-	Id         uint32
-	tcpHandle  *tcpConnection
-
-	destAddr   string
-	connOut    net.Conn
-
-	status     Status
-	statusMu   sync.Mutex
-
-	recvChunks chan []byte
-
-	writing    sync.Mutex
-	recvBuf    bytes.Buffer
-	recvBufMu  sync.Mutex
-
-	ctx        context.Context
-	ctxCancel  context.CancelFunc
+type UdpTunnel struct {
 }
 
-func NewTcpTunnel(client *C.tcp_pcb, dialFn Dialer, id uint32) (*TcpTunnel, error) {
-	destAddr := C.dump_dest_addr(client)
-	defer C.free(unsafe.Pointer(destAddr))
+type TcpTunnel struct {
+	Id               TransportID
+	wq               *waiter.Queue
+	ep               tcpip.Endpoint
+
+	connOut          net.Conn
+
+	status           TunnelStatus
+	statusMu         sync.Mutex
+
+	tunnelRecvChunks chan []byte
+	recvChunks       chan []byte
+
+	ctx              context.Context
+	ctxCancel        context.CancelFunc
+	closeCallback    func(TransportID)
+
+	quitOne          sync.Once
+}
+
+func NewTcpTunnel(wq *waiter.Queue, ep tcpip.Endpoint, dialFn Dialer, closeCallback func(TransportID)) (*TcpTunnel, error) {
+	srcAddr, _ := ep.GetRemoteAddress()
+	remoteAddr, _ := ep.GetLocalAddress()
+
+	id := TransportID{srcAddr.Port, srcAddr.Addr, remoteAddr.Port, remoteAddr.Addr}
 
 	t := &TcpTunnel{
 		Id:id,
-		tcpHandle:   &tcpConnection{pcb: client},
-		destAddr: C.GoString(destAddr),
-		recvChunks:    make(chan []byte, 256),
+		wq:wq,
+		ep:ep,
+		tunnelRecvChunks:make(chan []byte, 256),
+		recvChunks:make(chan []byte, 256),
+		closeCallback: closeCallback,
 	}
 
 	t.SetStatus(StatusConnecting)
 
 	var err error
-	if t.connOut, err = dialFn("tcp", t.destAddr); err != nil {
+	tcpTargetAddr := fmt.Sprintf("%s:%d", id.RemoteAddress, id.RemotePort)
+	log.Printf("Try to connect to %s by proto %s\n", tcpTargetAddr, "tcp")
+	if t.connOut, err = dialFn("tcp", tcpTargetAddr); err != nil {
 		t.SetStatus(StatusConnectionFailed)
 		return nil, err
 	}
@@ -62,149 +80,164 @@ func NewTcpTunnel(client *C.tcp_pcb, dialFn Dialer, id uint32) (*TcpTunnel, erro
 	return t, nil
 }
 
-func (t *TcpTunnel)Run() {
+func (t *TcpTunnel) Run() {
 
 	t.ctx, t.ctxCancel = context.WithCancel(context.Background())
-
-	writerOk := make(chan error)
-	readerOk := make(chan error)
-
-	go t.reader(readerOk)
-	go t.writer(writerOk)
-
-	<-writerOk
-	<-readerOk
-
+	go t.reader()
+	go t.writer()
+	go t.tunnelReader()
+	go t.tunnelWriter()
 	t.SetStatus(StatusProxying)
 }
 
-func (t *TcpTunnel) SetStatus(s Status) {
+func (t *TcpTunnel) SetStatus(s TunnelStatus) {
 	t.statusMu.Lock()
 	t.status = s
 	t.statusMu.Unlock()
 }
 
-func (t *TcpTunnel) Status() Status {
+func (t *TcpTunnel) Status() TunnelStatus {
 	t.statusMu.Lock()
 	s := t.status
 	t.statusMu.Unlock()
 	return s
 }
 
-func (t *TcpTunnel) writeToClient() error {
+func (t *TcpTunnel) reader() {
+	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
 
-	t.writing.Lock()
-	defer t.writing.Unlock()
+	t.wq.EventRegister(&waitEntry, waiter.EventIn)
+	defer t.wq.EventUnregister(&waitEntry)
 
-	// Sends tcp writes until tcp send buffer is full.
 	for {
+		v, err := t.ep.Read(nil)
+		if err != nil {
+			if err == tcpip.ErrWouldBlock {
+				<-notifyCh
+				continue
+			}
 
-		t.recvBufMu.Lock()
-		blen := uint(t.recvBuf.Len())
-		t.recvBufMu.Unlock()
-
-		if blen == 0 {
-			return nil
+			log.Print(err)
+			t.quit(err.Error())
+			return
 		}
 
-		mlen := t.tcpHandle.sndBufSize()
-		if mlen == 0 {
-			// At this point the actual tcp send buffer is full, let's wait for some
-			// acks to try again.
-			return errBufferIsFull
-		}
-
-		if blen > mlen {
-			blen = mlen
-		}
-
-		chunk := make([]byte, blen)
-
-		t.recvBufMu.Lock()
-		if _, err := t.recvBuf.Read(chunk); err != nil {
-			t.recvBufMu.Unlock()
-			return err
-		}
-		t.recvBufMu.Unlock()
-
-		// Enqueuing chunk.
-		select {
-		case t.recvChunks <- chunk:
-		case <-t.ctx.Done():
-			return t.ctx.Err()
-		}
+		t.recvChunks <- v
 	}
+
+	return
 }
 
-func (t *TcpTunnel) writer(started chan error) error {
-	started <- nil
+func (t *TcpTunnel) writer() {
+	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
+
+	t.wq.EventRegister(&waitEntry, waiter.EventIn)
+	defer t.wq.EventUnregister(&waitEntry)
 
 	for {
 		select {
 		case <-t.ctx.Done():
-			return t.ctx.Err()
-		case chunk := <-t.recvChunks:
-			for i := 0; ; i++ {
-				err := t.tcpHandle.tcpWrite(chunk)
-				if err == nil {
+			log.Print(t.ctx.Err())
+			return
+		case chunk := <-t.tunnelRecvChunks:
+			for {
+				_, err := t.ep.Write(chunk, nil)
+				if err != nil {
+					if err == tcpip.ErrWouldBlock {
+						<-notifyCh
+						continue
+					}
+
+					log.Print(err)
+					t.quit(err.Error())
+					return
+
+				} else {
 					break
 				}
-				if err == errBufferIsFull {
-					time.Sleep(time.Millisecond * 10)
-					continue
-				}
-				return err
 			}
 		}
 	}
 
-	return nil
+	return
 }
 
-func (t *TcpTunnel) quit(reason string) error {
-	status := t.Status()
-
-	if status != StatusProxying {
-		return fmt.Errorf("unexpected status %d", status)
-	}
-
-	t.SetStatus(StatusClosing)
-
-	t.connOut.Close()
-
-	t.SetStatus(StatusClosed)
-
-	t.ctxCancel()
-
-	return nil
-}
-
-// reader is the goroutine that reads whatever the connOut proxied destination
-// receives and writes it to a buffer.
-func (t *TcpTunnel) reader(started chan error) error {
-	started <- nil
+func (t *TcpTunnel) tunnelReader() {
 
 	for {
 		select {
 		case <-t.ctx.Done():
-			return t.ctx.Err()
+			log.Print(t.ctx.Err())
+			return
+
 		default:
 			data := make([]byte, readBufSize)
 			t.connOut.SetReadDeadline(time.Now().Add(ioTimeout))
 			n, err := t.connOut.Read(data)
 			if err != nil {
-				return err
+				log.Print(err)
+				t.quit(err.Error())
+				return
 			}
 			if n > 0 {
-				t.recvBufMu.Lock()
-				t.recvBuf.Write(data[0:n])
-				t.recvBufMu.Unlock()
-
-				go t.writeToClient()
+				t.tunnelRecvChunks <- data[0:n]
 			}
 		}
 	}
 
-	return nil
+	return
 }
 
+func (t *TcpTunnel) tunnelWriter() {
+
+	for {
+		select {
+		case <-t.ctx.Done():
+			log.Print(t.ctx.Err())
+			return
+
+		case chunk := <-t.recvChunks:
+			for {
+				n, err := t.connOut.Write(chunk)
+				if err != nil {
+					log.Print(err)
+					t.quit(err.Error())
+					return
+				}
+
+				if n < len(chunk) {
+					chunk = chunk[n:]
+					continue
+				}
+
+				break
+			}
+
+		}
+	}
+
+	return
+}
+
+func (t *TcpTunnel) quit(reason string)  {
+
+	t.quitOne.Do(func() {
+		status := t.Status()
+
+		if status != StatusProxying {
+			log.Printf("unexpected status %d", status)
+		}
+
+		t.SetStatus(StatusClosing)
+		t.ctxCancel()
+		t.connOut.Close()
+		t.ep.Close()
+
+		t.SetStatus(StatusClosed)
+		if t.closeCallback != nil {
+			t.closeCallback(t.Id)
+		}
+	})
+
+	return
+}

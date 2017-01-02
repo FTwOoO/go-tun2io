@@ -1,10 +1,19 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// This sample creates a stack with TCP and IPv4 protocols on top of a TUN
-// device, and listens on a port. Data received by the server in the accepted
-// connections is echoed back to the clients.
+/*
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Author: FTwOoO <booobooob@gmail.com>
+ */
 package main
 
 import (
@@ -12,18 +21,11 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/FTwOoO/netstack/tcpip"
-	"github.com/FTwOoO/netstack/tcpip/link/fdbased"
 	"github.com/FTwOoO/netstack/tcpip/link/rawfile"
 	"github.com/FTwOoO/netstack/tcpip/link/tun"
-	"github.com/FTwOoO/netstack/tcpip/network/ipv4"
-	"github.com/FTwOoO/netstack/tcpip/network/ipv6"
-	"github.com/FTwOoO/netstack/tcpip/stack"
-	"github.com/FTwOoO/netstack/tcpip/transport/tcp"
-	"github.com/FTwOoO/netstack/waiter"
+	"./tun2io"
 )
 
 func main() {
@@ -52,81 +54,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_ = CreateStackWithFd(parsedAddr, fd, mtu)
-
-	for {
-		time.Sleep(5 * time.Second)
-	}
-
-}
-
-func CreateStackWithFd(mainAddr net.IP, fd int, mtu int) tcpip.Stack {
-	var addr tcpip.Address
-	var proto tcpip.NetworkProtocolNumber
-
-	if mainAddr.To4() != nil {
-		addr = tcpip.Address(mainAddr.To4())
-		proto = ipv4.ProtocolNumber
-	} else if mainAddr.To16() != nil {
-		addr = tcpip.Address(mainAddr.To16())
-		proto = ipv6.ProtocolNumber
-	} else {
-		log.Fatalf("Unknown IP type: %v", mainAddr)
-	}
-
-
-	// Create the stack with ip and tcp protocols, then add a tun-based
-	// NIC and address.
-	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName})
-
-	linkID := fdbased.New(fd, mtu, nil)
-	if err := s.CreateNIC(1, linkID); err != nil {
+	linkId, err := tun2io.CreateFdLinkEndpoint(fd, mtu)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	s.SetForwardMode(true, echo, nil)
-
-	if err := s.AddAddress(1, proto, addr); err != nil {
+	s, err := tun2io.CreateStack(parsedAddr, linkId)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Add default route.
-	s.SetRouteTable([]tcpip.Route{
-		{
-			Destination: tcpip.Address(strings.Repeat("\x00", len(addr))),
-			Mask:        tcpip.Address(strings.Repeat("\x00", len(addr))),
-			Gateway:     "",
-			NIC:         1,
-		},
-	})
-
-	return s
+	manager, err := tun2io.NewTun2ioManager(s, tun2io.TcpDirectDialer)
+	manager.MainLoop()
 }
 
 
-
-
-func echo(wq *waiter.Queue, ep tcpip.Endpoint) {
-	defer ep.Close()
-
-	// Create wait queue entry that notifies a channel.
-	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
-
-	wq.EventRegister(&waitEntry, waiter.EventIn)
-	defer wq.EventUnregister(&waitEntry)
-
-	for {
-		v, err := ep.Read(nil)
-		if err != nil {
-			if err == tcpip.ErrWouldBlock {
-				<-notifyCh
-				continue
-			}
-
-			return
-		}
-
-		ep.Write(v, nil)
-	}
-}
 

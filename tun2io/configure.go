@@ -1,9 +1,26 @@
+/*
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Author: FTwOoO <booobooob@gmail.com>
+ */
 package tun2io
 
 import (
 	"errors"
 	"net"
 	"time"
+	"github.com/FTwOoO/netstack/tcpip"
 )
 
 var (
@@ -13,8 +30,10 @@ var (
 	ioTimeout = time.Second * 30
 )
 
+type TunnelStatus uint
+
 const (
-	StatusNew Status = iota // 0
+	StatusNew TunnelStatus = iota // 0
 	StatusConnecting                     // 1
 	StatusConnectionFailed               // 2
 	StatusConnected                      // 3
@@ -25,13 +44,23 @@ const (
 	readBufSize = 1024 * 64
 )
 
-type Addr struct {
-	addr net.Addr
-	port int
-}
-
 type Dialer func(proto, addr string) (net.Conn, error)
 
-type Status uint
+func TcpDirectDialer(proto, addr string) (net.Conn, error) {
+	return net.Dial(proto, addr)
+}
 
+type TransportID struct {
+	// srcPort is the src port from client
+	srcPort       uint16
 
+	// srcAddress is the src [network layer] address associated with client.
+	srcAddress    tcpip.Address
+
+	// RemotePort is the remote port associated with the target.
+	RemotePort    uint16
+
+	// RemoteAddress it the remote [network layer] address associated with
+	// the target.
+	RemoteAddress tcpip.Address
+}
