@@ -1,3 +1,6 @@
 # go-tun2io
 
-go-tun2io forwards TCP packets to a net.Dialer, similar to [tunio](https://github.com/getlantern/tunio) and [badvpn-tun2socks](https://github.com/ambrop72/badvpn), but use [netstack](https://github.com/google/netstack) instead of badvpn-tun2socks(based on [lwip](http://savannah.nongnu.org/projects/lwip/)) for tcp packet processing.
+go-tun2io is similar to [tunio](https://github.com/getlantern/tunio) which based on [badvpn-tun2socks](https://github.com/ambrop72/badvpn)/lwip.
+
+go-tun2io use [netstack](https://github.com/google/netstack) instead of badvpn-tun2socks/lwip as the userland tcpip stack, 
+transform all TCP packets from network interface to SOCKS/HTTP proxy connection(as proxy.Dialer API).
