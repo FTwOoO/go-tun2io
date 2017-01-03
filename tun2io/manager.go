@@ -24,6 +24,10 @@ import (
 	"log"
 	"time"
 	"golang.org/x/net/proxy"
+	"github.com/FTwOoO/netstack/tcpip/stack"
+	"github.com/FTwOoO/netstack/tcpip/header"
+	"fmt"
+	"github.com/FTwOoO/netstack/tcpip/buffer"
 )
 
 type Tun2ioManager struct {
@@ -35,6 +39,8 @@ type Tun2ioManager struct {
 
 	udpTunnelsMu  sync.Mutex
 	udpTunnels    map[TransportID]*UdpTunnel
+
+	NID           tcpip.NICID
 }
 
 func NewTun2ioManager(s tcpip.Stack, defaultDialer proxy.Dialer) (*Tun2ioManager, error) {
@@ -44,21 +50,88 @@ func NewTun2ioManager(s tcpip.Stack, defaultDialer proxy.Dialer) (*Tun2ioManager
 		tcpTunnels: make(map[TransportID]*TcpTunnel, 0),
 		udpTunnels: make(map[TransportID]*UdpTunnel, 0),
 		defaultDialer:defaultDialer,
+		NID: 1,
 	}
-	s.SetForwardMode(true, m.tcpCallback, m.udpCallback)
 
+	s.(*stack.Stack).SetTransportProtocolHandler(header.TCPProtocolNumber, m.tcpHandler)
+	s.(*stack.Stack).SetTransportProtocolHandler(header.UDPProtocolNumber, m.udpHandler)
+	s.(*stack.Stack).SetForwardMode(true)
 	return m, nil
 }
 
 func (m *Tun2ioManager) MainLoop() {
 	for {
 		time.Sleep(5 * time.Second)
-		log.Printf(m.stack.PrintNicTransportStats())
+		log.Printf(m.stack.(*stack.Stack).PrintNicTransportStats())
 	}
 }
 
-func (m *Tun2ioManager) tcpCallback(wq *waiter.Queue, ep tcpip.Endpoint) {
+func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID, vv *buffer.VectorisedView) bool {
+	protocol := header.TCPProtocolNumber
+	netProto := r.NetProto
 
+	//TODO: check if its local ip/local subnet ip
+	listenId := id
+	listenId.RemoteAddress = ""
+	listenId.RemotePort = 0
+
+	fmt.Printf("Try to find endpoint for id[%s] and listen id[%s]\n", id.ToString(), listenId.ToString())
+
+	demux := m.stack.(*stack.Stack).GetDemuxer(m.NID)
+	if demux.IsEndpointExist(netProto, protocol, id) || demux.IsEndpointExist(netProto, protocol, listenId) {
+		return false
+	}
+
+	log.Printf("Create endpoint with id %s\n", id.ToString())
+
+	var wq waiter.Queue
+	ep, err := m.stack.NewEndpoint(protocol, netProto, &wq)
+	if err != nil {
+		log.Fatal(err)
+		return false
+	}
+
+	if err := ep.BindRemote(m.NID, tcpip.FullAddress{0, listenId.LocalAddress, listenId.LocalPort}, nil); err != nil {
+		log.Fatal("Bind failed: ", err)
+		return false
+	}
+
+	if err := ep.Listen(10); err != nil {
+		log.Fatal("Listen failed: ", err)
+		return false
+
+	}
+
+	go func() {
+		waitEntry, notifyCh := waiter.NewChannelEntry(nil)
+		wq.EventRegister(&waitEntry, waiter.EventIn)
+		defer wq.EventUnregister(&waitEntry)
+
+		for {
+			n, wq, err := ep.Accept()
+			if err != nil {
+				if err == tcpip.ErrWouldBlock {
+					<-notifyCh
+					continue
+				}
+
+				log.Fatalf("Accept() failed: current %s", err)
+			}
+
+			l, _ := n.GetLocalAddress()
+			r, _ := n.GetRemoteAddress()
+
+			log.Printf("Accept a connection from %s:%d->%s:%d\n", r.Addr, r.Port, l.Addr, l.Port)
+			go m.tcpCb(wq, n)
+		}
+	}()
+
+	nic := m.stack.(*stack.Stack).GetNic(m.NID)
+	nic.DeliverTransportPacket(r, protocol, vv)
+	return true
+}
+
+func (m *Tun2ioManager) tcpCb(wq *waiter.Queue, ep tcpip.Endpoint) {
 	tunnel, err := NewTcpTunnel(wq, ep, m.defaultDialer, m.tcpEndpointClosed)
 	if err != nil {
 		log.Print(err)
@@ -79,6 +152,6 @@ func (m *Tun2ioManager) tcpEndpointClosed(id TransportID) {
 	delete(m.tcpTunnels, id)
 }
 
-func (m *Tun2ioManager) udpCallback(wq *waiter.Queue, ep tcpip.Endpoint) {
+func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID, vv *buffer.VectorisedView) bool {
+	return false
 }
-
