@@ -26,7 +26,6 @@ import (
 	"golang.org/x/net/proxy"
 	"github.com/FTwOoO/netstack/tcpip/stack"
 	"github.com/FTwOoO/netstack/tcpip/header"
-	"fmt"
 	"github.com/FTwOoO/netstack/tcpip/buffer"
 )
 
@@ -75,7 +74,7 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 	listenId.RemoteAddress = ""
 	listenId.RemotePort = 0
 
-	fmt.Printf("Try to find endpoint for id[%s] and listen id[%s]\n", id.ToString(), listenId.ToString())
+	log.Printf("Try to find endpoint for id[%s] and listen id[%s]\n", id.ToString(), listenId.ToString())
 
 	demux := m.stack.(*stack.Stack).GetDemuxer(m.NID)
 	if demux.IsEndpointExist(netProto, protocol, id) || demux.IsEndpointExist(netProto, protocol, listenId) {
