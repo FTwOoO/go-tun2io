@@ -28,7 +28,7 @@ import (
 	"github.com/armon/go-socks5"
 )
 
-const socksAddr = "45.76.196.181:1080"
+const socksAddr = "52.69.162.110:1080"
 
 func main() {
 	if len(os.Args) != 3 {
@@ -71,7 +71,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	go createSocks5Server(socksAddr)
+	//go createSocks5Server(socksAddr)
 
 	manager, err := tun2io.NewTun2ioManager(stack, dialer)
 	manager.MainLoop()

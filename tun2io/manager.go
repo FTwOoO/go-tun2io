@@ -53,6 +53,7 @@ func NewTun2ioManager(s tcpip.Stack, defaultDialer proxy.Dialer) (*Tun2ioManager
 func (m *Tun2ioManager) MainLoop() {
 	for {
 		time.Sleep(5 * time.Second)
+		log.Printf(m.stack.PrintNicTransportStats())
 	}
 }
 

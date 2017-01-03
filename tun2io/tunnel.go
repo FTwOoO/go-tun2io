@@ -138,7 +138,7 @@ func (t *TcpTunnel) writer() {
 	for {
 		select {
 		case <-t.ctx.Done():
-			log.Print(t.ctx.Err())
+			log.Printf("writer done because %s", t.ctx.Err())
 			return
 		case chunk := <-t.tunnelRecvChunks:
 			for {
@@ -168,7 +168,7 @@ func (t *TcpTunnel) tunnelReader() {
 	for {
 		select {
 		case <-t.ctx.Done():
-			log.Print(t.ctx.Err())
+			log.Printf("tunnel reader done because %s", t.ctx.Err())
 			return
 
 		default:
@@ -194,7 +194,7 @@ func (t *TcpTunnel) tunnelWriter() {
 	for {
 		select {
 		case <-t.ctx.Done():
-			log.Print(t.ctx.Err())
+			log.Printf("tunnel writer done because %s", t.ctx.Err())
 			return
 
 		case chunk := <-t.recvChunks:
