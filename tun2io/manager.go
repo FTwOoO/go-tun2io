@@ -18,15 +18,15 @@
 package tun2io
 
 import (
-	"github.com/FTwOoO/netstack/tcpip"
-	"github.com/FTwOoO/netstack/waiter"
 	"sync"
 	"log"
 	"time"
-	"golang.org/x/net/proxy"
+	"github.com/FTwOoO/netstack/tcpip"
+	"github.com/FTwOoO/netstack/waiter"
 	"github.com/FTwOoO/netstack/tcpip/stack"
 	"github.com/FTwOoO/netstack/tcpip/header"
 	"github.com/FTwOoO/netstack/tcpip/buffer"
+	"golang.org/x/net/proxy"
 )
 
 type Tun2ioManager struct {
@@ -166,8 +166,15 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 		return false
 	}
 
+	//id.LocalAddress:id.LocalPort is the target ip-port pair
 	if err := ep.Bind(tcpip.FullAddress{m.NID, id.LocalAddress, id.LocalPort}, nil); err != nil {
 		log.Fatal("Bind failed: ", err)
+		return false
+	}
+
+
+	if err := ep.Connect(tcpip.FullAddress{m.NID, id.RemoteAddress, id.RemotePort}); err != nil {
+		log.Fatal("Connect failed: ", err)
 		return false
 	}
 
