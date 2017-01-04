@@ -22,7 +22,7 @@ TCP packets -> tun -> go-tun2io -> SOCKS5 server -> target(xahlee.info:80)
     ifconfig tun2 192.168.4.1 netmask 255.255.255.0
     
     ip route add 74.208.215.34 metric 1 dev tun2
-    ip route add 0.0.0.0/0 metric 3 via 45.76.196.1 dev ens3
+    ip route add 0.0.0.0/0 metric 2 via 45.76.196.1 dev ens3
     ip route delete 0.0.0.0/0 metric 0 via 45.76.196.1 dev ens3
     ```
 
