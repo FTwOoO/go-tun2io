@@ -20,6 +20,7 @@ import (
 	"errors"
 	"time"
 	"github.com/FTwOoO/netstack/tcpip"
+	"fmt"
 )
 
 var (
@@ -46,11 +47,13 @@ const (
 
 
 type TransportID struct {
+	Transport     tcpip.TransportProtocolNumber
+
 	// srcPort is the src port from client
-	srcPort       uint16
+	SrcPort       uint16
 
 	// srcAddress is the src [network layer] address associated with client.
-	srcAddress    tcpip.Address
+	SrcAddress    tcpip.Address
 
 	// RemotePort is the remote port associated with the target.
 	RemotePort    uint16
@@ -58,4 +61,8 @@ type TransportID struct {
 	// RemoteAddress it the remote [network layer] address associated with
 	// the target.
 	RemoteAddress tcpip.Address
+}
+
+func (id TransportID) ToString() string {
+	return fmt.Sprintf("%s:%d -> %s:%d", id.RemoteAddress, id.RemotePort, id.SrcAddress, id.SrcPort)
 }

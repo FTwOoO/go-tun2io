@@ -26,12 +26,10 @@ import (
 	"golang.org/x/net/proxy"
 	"log"
 	"fmt"
+	"github.com/FTwOoO/netstack/tcpip/header"
 )
 
-type UdpTunnel struct {
-}
-
-type TcpTunnel struct {
+type Tunnel struct {
 	Id               TransportID
 	wq               *waiter.Queue
 	ep               tcpip.Endpoint
@@ -51,13 +49,19 @@ type TcpTunnel struct {
 	quitOne          sync.Once
 }
 
-func NewTcpTunnel(wq *waiter.Queue, ep tcpip.Endpoint, dialer proxy.Dialer, closeCallback func(TransportID)) (*TcpTunnel, error) {
+func NewTunnel(network string, wq *waiter.Queue, ep tcpip.Endpoint, dialer proxy.Dialer, closeCallback func(TransportID)) (*Tunnel, error) {
 	srcAddr, _ := ep.GetRemoteAddress()
 	remoteAddr, _ := ep.GetLocalAddress()
 
-	id := TransportID{srcAddr.Port, srcAddr.Addr, remoteAddr.Port, remoteAddr.Addr}
+	id := TransportID{0, srcAddr.Port, srcAddr.Addr, remoteAddr.Port, remoteAddr.Addr}
 
-	t := &TcpTunnel{
+	if network == "tcp" {
+		id.Transport = header.TCPProtocolNumber
+	} else if network == "udp" {
+		id.Transport = header.UDPProtocolNumber
+	}
+
+	t := &Tunnel{
 		Id:id,
 		wq:wq,
 		ep:ep,
@@ -69,9 +73,9 @@ func NewTcpTunnel(wq *waiter.Queue, ep tcpip.Endpoint, dialer proxy.Dialer, clos
 	t.SetStatus(StatusConnecting)
 
 	var err error
-	tcpTargetAddr := fmt.Sprintf("%s:%d", id.RemoteAddress, id.RemotePort)
-	log.Printf("Try to connect to %s by proto %s\n", tcpTargetAddr, "tcp")
-	if t.connOut, err = dialer.Dial("tcp", tcpTargetAddr); err != nil {
+	targetAddr := fmt.Sprintf("%s:%d", id.RemoteAddress, id.RemotePort)
+	log.Printf("Try to connect to %s by proto %s\n", targetAddr, network)
+	if t.connOut, err = dialer.Dial(network, targetAddr); err != nil {
 		t.SetStatus(StatusConnectionFailed)
 		return nil, err
 	}
@@ -81,7 +85,7 @@ func NewTcpTunnel(wq *waiter.Queue, ep tcpip.Endpoint, dialer proxy.Dialer, clos
 	return t, nil
 }
 
-func (t *TcpTunnel) Run() {
+func (t *Tunnel) Run() {
 
 	t.ctx, t.ctxCancel = context.WithCancel(context.Background())
 	go t.reader()
@@ -91,20 +95,20 @@ func (t *TcpTunnel) Run() {
 	t.SetStatus(StatusProxying)
 }
 
-func (t *TcpTunnel) SetStatus(s TunnelStatus) {
+func (t *Tunnel) SetStatus(s TunnelStatus) {
 	t.statusMu.Lock()
 	t.status = s
 	t.statusMu.Unlock()
 }
 
-func (t *TcpTunnel) Status() TunnelStatus {
+func (t *Tunnel) Status() TunnelStatus {
 	t.statusMu.Lock()
 	s := t.status
 	t.statusMu.Unlock()
 	return s
 }
 
-func (t *TcpTunnel) reader() {
+func (t *Tunnel) reader() {
 	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
 
 	t.wq.EventRegister(&waitEntry, waiter.EventIn)
@@ -129,7 +133,7 @@ func (t *TcpTunnel) reader() {
 	return
 }
 
-func (t *TcpTunnel) writer() {
+func (t *Tunnel) writer() {
 	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
 
 	t.wq.EventRegister(&waitEntry, waiter.EventIn)
@@ -163,7 +167,7 @@ func (t *TcpTunnel) writer() {
 	return
 }
 
-func (t *TcpTunnel) tunnelReader() {
+func (t *Tunnel) tunnelReader() {
 
 	for {
 		select {
@@ -189,7 +193,7 @@ func (t *TcpTunnel) tunnelReader() {
 	return
 }
 
-func (t *TcpTunnel) tunnelWriter() {
+func (t *Tunnel) tunnelWriter() {
 
 	for {
 		select {
@@ -220,7 +224,7 @@ func (t *TcpTunnel) tunnelWriter() {
 	return
 }
 
-func (t *TcpTunnel) quit(reason string)  {
+func (t *Tunnel) quit(reason string)  {
 
 	t.quitOne.Do(func() {
 		status := t.Status()

@@ -33,11 +33,8 @@ type Tun2ioManager struct {
 	stack         tcpip.Stack
 	defaultDialer proxy.Dialer
 
-	tcpTunnelsMu  sync.Mutex
-	tcpTunnels    map[TransportID]*TcpTunnel
-
-	udpTunnelsMu  sync.Mutex
-	udpTunnels    map[TransportID]*UdpTunnel
+	tunnelsMu     sync.Mutex
+	tunnels       map[TransportID]*Tunnel
 
 	NID           tcpip.NICID
 }
@@ -46,8 +43,7 @@ func NewTun2ioManager(s tcpip.Stack, defaultDialer proxy.Dialer) (*Tun2ioManager
 
 	m := &Tun2ioManager{
 		stack:s,
-		tcpTunnels: make(map[TransportID]*TcpTunnel, 0),
-		udpTunnels: make(map[TransportID]*UdpTunnel, 0),
+		tunnels: make(map[TransportID]*Tunnel, 0),
 		defaultDialer:defaultDialer,
 		NID: 1,
 	}
@@ -90,7 +86,7 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 		return false
 	}
 
-	if err := ep.BindRemote(m.NID, tcpip.FullAddress{0, listenId.LocalAddress, listenId.LocalPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{m.NID, listenId.LocalAddress, listenId.LocalPort}, nil); err != nil {
 		log.Fatal("Bind failed: ", err)
 		return false
 	}
@@ -131,26 +127,63 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 }
 
 func (m *Tun2ioManager) tcpCb(wq *waiter.Queue, ep tcpip.Endpoint) {
-	tunnel, err := NewTcpTunnel(wq, ep, m.defaultDialer, m.tcpEndpointClosed)
+	tunnel, err := NewTunnel("tcp", wq, ep, m.defaultDialer, m.endpointClosed)
 	if err != nil {
 		log.Print(err)
 		ep.Close()
 		return
 	}
 
-	m.tcpTunnelsMu.Lock()
-	defer m.tcpTunnelsMu.Unlock()
-	m.tcpTunnels[tunnel.Id] = tunnel
+	m.tunnelsMu.Lock()
+	defer m.tunnelsMu.Unlock()
+	m.tunnels[tunnel.Id] = tunnel
 
 	tunnel.Run()
 }
 
-func (m *Tun2ioManager) tcpEndpointClosed(id TransportID) {
-	m.tcpTunnelsMu.Lock()
-	defer m.tcpTunnelsMu.Unlock()
-	delete(m.tcpTunnels, id)
+func (m *Tun2ioManager) endpointClosed(id TransportID) {
+	m.tunnelsMu.Lock()
+	defer m.tunnelsMu.Unlock()
+	delete(m.tunnels, id)
 }
 
 func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID, vv *buffer.VectorisedView) bool {
-	return false
+	protocol := header.UDPProtocolNumber
+	netProto := r.NetProto
+
+
+	demux := m.stack.(*stack.Stack).GetDemuxer(m.NID)
+	if demux.IsEndpointExist(netProto, protocol, id) {
+		return false
+	}
+
+	log.Printf("Create endpoint with id %s\n", id.ToString())
+
+	var wq waiter.Queue
+	ep, err := m.stack.NewEndpoint(protocol, netProto, &wq)
+	if err != nil {
+		log.Fatal(err)
+		return false
+	}
+
+	if err := ep.Bind(tcpip.FullAddress{m.NID, id.LocalAddress, id.LocalPort}, nil); err != nil {
+		log.Fatal("Bind failed: ", err)
+		return false
+	}
+
+	tunnel, err := NewTunnel("udp", &wq, ep, m.defaultDialer, m.endpointClosed)
+	if err != nil {
+		log.Print(err)
+		ep.Close()
+		return false
+	}
+
+	m.tunnelsMu.Lock()
+	defer m.tunnelsMu.Unlock()
+	m.tunnels[tunnel.Id] = tunnel
+
+	tunnel.Run()
+	nic := m.stack.(*stack.Stack).GetNic(m.NID)
+	nic.DeliverTransportPacket(r, protocol, vv)
+	return true
 }

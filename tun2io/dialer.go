@@ -20,12 +20,17 @@ package tun2io
 import (
 	"net"
 	"golang.org/x/net/proxy"
+	"errors"
 )
-type TcpDirectDialer struct {}
-func (f *TcpDirectDialer) Dial(network, addr string) (net.Conn, error) {
+type DirectDialer struct {}
+func (f *DirectDialer) Dial(network, addr string) (net.Conn, error) {
 	return net.Dial(network, addr)
 }
 
 func NewSOCKS5Dialer(network, addr string, auth *proxy.Auth) (proxy.Dialer, error) {
-	return proxy.SOCKS5(network, addr, auth, new(TcpDirectDialer))
+	if network == "udp" {
+		return nil, errors.New("UDP is not supported now")
+	}
+
+	return proxy.SOCKS5(network, addr, auth, new(DirectDialer))
 }
