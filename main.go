@@ -109,7 +109,7 @@ func generateUDPTest(s tcpip.Stack, linkId tcpip.LinkEndpointID, NID tcpip.NICID
 		d := s.(*stack.Stack).GetNic(NID)
 
 		buf := gopacket.NewSerializeBuffer()
-		opts := gopacket.SerializeOptions{}
+		opts := gopacket.SerializeOptions{FixLengths:true}
 		gopacket.SerializeLayers(buf, opts,
 			&layers.IPv4{SrcIP:net.IP{192, 168, 4, 1}, DstIP:net.IP{8, 8, 8, 8}, Protocol:layers.IPProtocolUDP},
 			&layers.UDP{SrcPort:10089, DstPort:53},
