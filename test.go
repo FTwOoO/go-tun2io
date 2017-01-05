@@ -73,7 +73,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dialer := &tun2io.SOCKS5Dialer{}
+	dialer := &tun2io.SOCKS5Dialer{SocksAddr:socksAddr}
 	if err != nil {
 		log.Fatal(err)
 	}

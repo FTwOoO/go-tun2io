@@ -30,7 +30,8 @@ func (f *DirectDialer) Dial(network, addr string) (net.Conn, error) {
 }
 
 type SOCKS5Dialer struct {
-	auth *proxy.Auth
+	Auth      *proxy.Auth
+	SocksAddr string
 }
 
 func (f *SOCKS5Dialer) Dial(network, addr string) (net.Conn, error) {
@@ -38,7 +39,7 @@ func (f *SOCKS5Dialer) Dial(network, addr string) (net.Conn, error) {
 		return new(DirectDialer).Dial(network, addr)
 	} else if network == "tcp" {
 
-		dialer, err := proxy.SOCKS5(network, addr, f.auth, new(DirectDialer))
+		dialer, err := proxy.SOCKS5(network, f.SocksAddr, f.Auth, new(DirectDialer))
 		if err != nil {
 			return nil, err
 		}
