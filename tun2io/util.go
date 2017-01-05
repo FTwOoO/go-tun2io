@@ -29,6 +29,7 @@ import (
 	"github.com/FTwOoO/netstack/tcpip/transport/tcp"
 	"github.com/FTwOoO/netstack/waiter"
 	"fmt"
+	"github.com/FTwOoO/netstack/tcpip/transport/udp"
 )
 
 func CreateFdLinkEndpoint(fd int, mtu int) (tcpip.LinkEndpointID, error) {
@@ -56,8 +57,7 @@ func CreateStack(mainAddr net.IP, linkEndpointId tcpip.LinkEndpointID) (tcpip.St
 
 	// Create the stack with ip and tcp protocols, then add a tun-based
 	// NIC and address.
-	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName})
-
+	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName})
 	if err := s.CreateNIC(1, linkEndpointId); err != nil {
 		log.Fatal(err)
 		return nil, err
