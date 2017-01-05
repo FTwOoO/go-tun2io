@@ -185,6 +185,7 @@ func (t *Tunnel) tunnelReader() {
 				return
 			}
 			if n > 0 {
+				log.Printf("receive a packet from tunnel[%s]\n", t.Id.ToString())
 				t.tunnelRecvChunks <- data[0:n]
 			}
 		}
@@ -214,7 +215,7 @@ func (t *Tunnel) tunnelWriter() {
 					chunk = chunk[n:]
 					continue
 				}
-
+				log.Printf("Write a packet to tunnel[%s]\n", t.Id.ToString())
 				break
 			}
 

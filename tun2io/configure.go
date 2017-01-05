@@ -64,5 +64,5 @@ type TransportID struct {
 }
 
 func (id TransportID) ToString() string {
-	return fmt.Sprintf("%s:%d -> %s:%d", id.RemoteAddress, id.RemotePort, id.SrcAddress, id.SrcPort)
+	return fmt.Sprintf("%s:%d -> %s:%d", id.SrcAddress, id.SrcPort, id.RemoteAddress, id.RemotePort)
 }

@@ -111,28 +111,25 @@ func generateUDPTest(s tcpip.Stack, linkId tcpip.LinkEndpointID, NID tcpip.NICID
 		buf := gopacket.NewSerializeBuffer()
 		opts := gopacket.SerializeOptions{FixLengths:true}
 		gopacket.SerializeLayers(buf, opts,
-			&layers.IPv4{SrcIP:net.IP{192, 168, 4, 1}, DstIP:net.IP{8, 8, 8, 8}, Protocol:layers.IPProtocolUDP},
-			&layers.UDP{SrcPort:10089, DstPort:53},
+			&layers.IPv4{SrcIP:net.IP{192, 168, 4, 1}, DstIP:net.IP{208, 67, 220, 220}, Protocol:layers.IPProtocolUDP},
+			&layers.UDP{SrcPort:10078, DstPort:53},
 			&layers.DNS{
-				ID:1,
-				QR:true,
-				QDCount:1,
+				ID:uint16(rand.Int31() & 0xFFFF),
+				RD: true,
 				OpCode:layers.DNSOpCodeQuery,
 				Questions:[]layers.DNSQuestion{
-				layers.DNSQuestion{
-					Name:[]byte("xhalee.info."),
-					Type:layers.DNSTypeA,
-					Class:layers.DNSClassIN}},
+					{
+						Name:[]byte("xahlee.info"),
+						Type:layers.DNSTypeA,
+						Class:layers.DNSClassIN,
+					},
+				},
 			},
 		)
 
-
 		packetData := buf.Bytes()
-
-		//hdr := buffer.NewPrependable(1024)
-		//ep.WritePacket(nil, &hdr, packetData, header.IPv4ProtocolNumber)
 		generateIpRequest(ep, d, header.IPv4ProtocolNumber, packetData)
-		time.Sleep(3*time.Second)
+		time.Sleep(3 * time.Second)
 	}
 
 	return nil
