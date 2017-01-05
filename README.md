@@ -12,10 +12,8 @@ The example will access http://xahlee.info webpage througth the tunnel:
 ```
 TCP packets <-> tun <-> netstack <-> go-tun2io <-> SOCKS5 server <-> target(xahlee.info:80)
 ```
-(The default SOCKS5 server is hardcoded in main.go:`socksAddr = "52.69.162.110:1080"`).
 
-
-create net interface with ip 192.168.4.1/24 
+create net interface with ip 192.168.4.1/24:
 
     ```
     ip tuntap add tun2 mode tun 
@@ -39,7 +37,7 @@ create net interface with ip 192.168.4.1/24
     192.168.4.0     0.0.0.0         255.255.255.0   U     0      0        0 tun2
     ```
 
-run the example to access http://xahlee.info (ip=74.208.215.34)
+run the example to access http://xahlee.info (ip=74.208.215.34):
 
     ```
     go run test.go tun2 192.168.4.1/24 52.69.162.110:1080
