@@ -5,16 +5,17 @@ go-tun2io is similar to [tunio](https://github.com/getlantern/tunio) which based
 go-tun2io use [netstack](https://github.com/google/netstack) instead of badvpn-tun2socks/lwip as the userland tcpip stack, 
 turn all TCP packets from network interface to SOCKS/HTTP proxy connection(as proxy.Dialer API).
 
-## TCP Example
+## Example
 
-This example will access http://xahlee.info by this flow
-(The default SOCKS5 server is hardcoded in main.go:`socksAddr = "52.69.162.110:1080"`):
+### TCP
+The example will access http://xahlee.info webpage througth the tunnel:
 ```
-TCP packets -> tun -> go-tun2io -> SOCKS5 server -> target(xahlee.info:80)
+TCP packets <-> tun <-> netstack <-> go-tun2io <-> SOCKS5 server <-> target(xahlee.info:80)
 ```
+(The default SOCKS5 server is hardcoded in main.go:`socksAddr = "52.69.162.110:1080"`).
 
 
-* create net interface with subnet 192.168.4.0/24
+create net interface with ip 192.168.4.1/24 
 
     ```
     ip tuntap add tun2 mode tun 
@@ -38,10 +39,24 @@ TCP packets -> tun -> go-tun2io -> SOCKS5 server -> target(xahlee.info:80)
     192.168.4.0     0.0.0.0         255.255.255.0   U     0      0        0 tun2
     ```
 
-* run the example to access http://xahlee.info (ip=74.208.215.34)
+run the example to access http://xahlee.info (ip=74.208.215.34)
 
     ```
-    go run main.go tun2 192.168.4.1/24
+    go run test.go tun2 192.168.4.1/24 52.69.162.110:1080
     curl http://xahlee.info
     
+    ```
+    
+### UDP
+The example will send DNS request for domain `xahlee.info` to Google DNS Server(8.8.8.8) and get the DNS response:
+
+```
+DNS request <-> netstack <-> go-tun2io <-> target(8.8.8.8:53)
+```
+
+The DNS request is injected directly inoto `netstack`, so tcpdump can not cature the DNS request, but 
+you can cature the DNS response:
+
+    ```
+    tcpdump -i tun2 -vvv -n
     ```

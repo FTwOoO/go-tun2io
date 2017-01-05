@@ -25,7 +25,6 @@ import (
 	"github.com/FTwOoO/netstack/tcpip/link/rawfile"
 	"github.com/FTwOoO/netstack/tcpip/link/tun"
 	"./tun2io"
-	"github.com/armon/go-socks5"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/FTwOoO/netstack/tcpip/stack"
@@ -34,19 +33,21 @@ import (
 	"github.com/FTwOoO/netstack/tcpip"
 )
 
-const socksAddr = "52.69.162.110:1080"
+var socksAddr string = "52.69.162.110:1080"
+var defaultDnsServer = net.IP{8, 8, 8, 8}
+const dnsReqFre = 3*time.Second
 
 func main() {
-	if len(os.Args) != 3 {
-		log.Fatal("Usage: ", os.Args[0], " <tun-device> <local-address>")
+	if len(os.Args) != 4 {
+		log.Fatal("Usage: ", os.Args[0], " <tun-device> <local-address> <socks5 server>")
 	}
 
 	tunName := os.Args[1]
 	addrName := os.Args[2]
+	socksAddr = os.Args[3]
 
 	rand.Seed(time.Now().UnixNano())
 
-	// Parse the IP address. Support both ipv4 and ipv6.
 	parsedAddr, _, err := net.ParseCIDR(addrName)
 	if err != nil {
 		log.Fatalf("Bad IP address: %v", addrName)
@@ -77,28 +78,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	//go createSocks5Server(socksAddr)
-	go generateUDPTest(s, linkId, 1)
+	go generateDNSTest(parsedAddr, s, linkId, 1)
 
 	manager, err := tun2io.NewTun2ioManager(s, dialer)
 	manager.MainLoop()
 }
 
-func createSocks5Server(addr string) {
 
-	conf := &socks5.Config{}
-	server, err := socks5.New(conf)
-	if err != nil {
-		panic(err)
-	}
 
-	if err := server.ListenAndServe("tcp", addr); err != nil {
-		panic(err)
-	}
-
-}
-
-func generateUDPTest(s tcpip.Stack, linkId tcpip.LinkEndpointID, NID tcpip.NICID) error {
+func generateDNSTest(srcAddr net.IP, s tcpip.Stack, linkId tcpip.LinkEndpointID, NID tcpip.NICID) error {
 	for {
 		ep := stack.FindLinkEndpoint(linkId)
 		if ep == nil {
@@ -111,7 +99,7 @@ func generateUDPTest(s tcpip.Stack, linkId tcpip.LinkEndpointID, NID tcpip.NICID
 		buf := gopacket.NewSerializeBuffer()
 		opts := gopacket.SerializeOptions{FixLengths:true}
 		gopacket.SerializeLayers(buf, opts,
-			&layers.IPv4{SrcIP:net.IP{192, 168, 4, 1}, DstIP:net.IP{208, 67, 220, 220}, Protocol:layers.IPProtocolUDP},
+			&layers.IPv4{SrcIP:srcAddr, DstIP:defaultDnsServer, Protocol:layers.IPProtocolUDP},
 			&layers.UDP{SrcPort:10078, DstPort:53},
 			&layers.DNS{
 				ID:uint16(rand.Int31() & 0xFFFF),
@@ -128,17 +116,13 @@ func generateUDPTest(s tcpip.Stack, linkId tcpip.LinkEndpointID, NID tcpip.NICID
 		)
 
 		packetData := buf.Bytes()
-		generateIpRequest(ep, d, header.IPv4ProtocolNumber, packetData)
-		time.Sleep(3 * time.Second)
+		view := buffer.View(packetData)
+		vv := buffer.NewVectorisedView(len(packetData), []buffer.View{view})
+		d.DeliverNetworkPacket(ep, header.IPv4ProtocolNumber, &vv)
+
+		time.Sleep(dnsReqFre)
 	}
 
 	return nil
-}
-
-func generateIpRequest(e stack.LinkEndpoint, d stack.NetworkDispatcher, p tcpip.NetworkProtocolNumber, packetData []byte) {
-
-	view := buffer.View(packetData)
-	vv := buffer.NewVectorisedView(len(packetData), []buffer.View{view})
-	d.DeliverNetworkPacket(e, p, &vv)
 }
 
