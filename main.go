@@ -72,7 +72,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dialer, err := tun2io.NewSOCKS5Dialer("tcp", socksAddr, nil)
+	dialer := &tun2io.SOCKS5Dialer{}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -113,9 +113,14 @@ func generateUDPTest(s tcpip.Stack, linkId tcpip.LinkEndpointID, NID tcpip.NICID
 		gopacket.SerializeLayers(buf, opts,
 			&layers.IPv4{SrcIP:net.IP{192, 168, 4, 1}, DstIP:net.IP{8, 8, 8, 8}, Protocol:layers.IPProtocolUDP},
 			&layers.UDP{SrcPort:10089, DstPort:53},
-			&layers.DNS{Questions:[]layers.DNSQuestion{
+			&layers.DNS{
+				ID:1,
+				QR:true,
+				QDCount:1,
+				OpCode:layers.DNSOpCodeQuery,
+				Questions:[]layers.DNSQuestion{
 				layers.DNSQuestion{
-					Name:[]byte("xhalee.info"),
+					Name:[]byte("xhalee.info."),
 					Type:layers.DNSTypeA,
 					Class:layers.DNSClassIN}},
 			},
@@ -124,12 +129,10 @@ func generateUDPTest(s tcpip.Stack, linkId tcpip.LinkEndpointID, NID tcpip.NICID
 
 		packetData := buf.Bytes()
 
-		log.Printf("genereated DNS req: %v\n", packetData)
-
 		//hdr := buffer.NewPrependable(1024)
 		//ep.WritePacket(nil, &hdr, packetData, header.IPv4ProtocolNumber)
 		generateIpRequest(ep, d, header.IPv4ProtocolNumber, packetData)
-		time.Sleep(10*time.Second)
+		time.Sleep(3*time.Second)
 	}
 
 	return nil

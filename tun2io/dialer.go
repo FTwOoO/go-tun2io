@@ -22,15 +22,29 @@ import (
 	"golang.org/x/net/proxy"
 	"errors"
 )
-type DirectDialer struct {}
+
+type DirectDialer struct{}
+
 func (f *DirectDialer) Dial(network, addr string) (net.Conn, error) {
 	return net.Dial(network, addr)
 }
 
-func NewSOCKS5Dialer(network, addr string, auth *proxy.Auth) (proxy.Dialer, error) {
+type SOCKS5Dialer struct {
+	auth *proxy.Auth
+}
+
+func (f *SOCKS5Dialer) Dial(network, addr string) (net.Conn, error) {
 	if network == "udp" {
-		return nil, errors.New("UDP is not supported now")
+		return new(DirectDialer).Dial(network, addr)
+	} else if network == "tcp" {
+
+		dialer, err := proxy.SOCKS5(network, addr, f.auth, new(DirectDialer))
+		if err != nil {
+			return nil, err
+		}
+
+		return dialer.Dial(network, addr)
 	}
 
-	return proxy.SOCKS5(network, addr, auth, new(DirectDialer))
+	return nil, errors.New("Unsupported network type")
 }

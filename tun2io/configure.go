@@ -27,7 +27,7 @@ var (
 	errBufferIsFull = errors.New("Buffer is full.")
 	errDeviceClosed = errors.New("Device is closed.")
 	reasonClientAbort = "Aborted by client."
-	ioTimeout = time.Second * 30
+	ioTimeout = time.Second * 60
 )
 
 type TunnelStatus uint

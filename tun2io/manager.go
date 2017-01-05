@@ -148,8 +148,6 @@ func (m *Tun2ioManager) endpointClosed(id TransportID) {
 }
 
 func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID, vv *buffer.VectorisedView) bool {
-	log.Printf("Receive a unhandle UDP packet!\n")
-
 	protocol := header.UDPProtocolNumber
 	netProto := r.NetProto
 
