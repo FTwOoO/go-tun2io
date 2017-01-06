@@ -57,4 +57,8 @@ you can cature the DNS response:
 
     ```
     tcpdump -i tun2 -vvv -n
+    
+    tcpdump: listening on tun2, link-type RAW (Raw IP), capture size 262144 bytes
+    12:12:40.821559 IP (tos 0x0, ttl 64, id 51067, offset 0, flags [DF], proto TCP (6), length 40)
+    192.168.4.1.54518 > 74.208.215.34.80: Flags [F.], cksum 0x49ee (correct), seq 2804701053, ack 1545723174, win 29200, length 0
     ```
