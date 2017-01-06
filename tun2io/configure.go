@@ -26,8 +26,10 @@ import (
 var (
 	errBufferIsFull = errors.New("Buffer is full.")
 	errDeviceClosed = errors.New("Device is closed.")
-	reasonClientAbort = "Aborted by client."
-	ioTimeout = time.Second * 60
+	ErrTimeout      = errors.New("operation timed out")
+	readTimeout = time.Second * 60
+	writeTimeout = time.Second * 10
+	listenTimeout = time.Second * 120
 )
 
 type TunnelStatus uint

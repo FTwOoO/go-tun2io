@@ -114,20 +114,26 @@ func (t *Tunnel) reader() {
 	t.wq.EventRegister(&waitEntry, waiter.EventIn)
 	defer t.wq.EventUnregister(&waitEntry)
 
-	for {
+	Reading:for {
 		v, err := t.ep.Read(nil)
-		if err != nil {
-			if err == tcpip.ErrWouldBlock {
-				<-notifyCh
-				continue
+		if err != nil && err == tcpip.ErrWouldBlock {
+			select {
+			case <-t.ctx.Done():
+				log.Printf("reader done because %s", t.ctx.Err())
+				break Reading
+			case <-notifyCh:
+				continue Reading
+			case <-time.After(readTimeout):
+				t.quit(ErrTimeout)
+				break Reading
 			}
-
-			log.Print(err)
-			t.quit(err.Error())
-			return
+		} else if err != nil {
+			t.quit(err)
+			break Reading
+		} else {
+			t.recvChunks <- v
+			continue Reading
 		}
-
-		t.recvChunks <- v
 	}
 
 	return
@@ -139,26 +145,31 @@ func (t *Tunnel) writer() {
 	t.wq.EventRegister(&waitEntry, waiter.EventIn)
 	defer t.wq.EventUnregister(&waitEntry)
 
-	for {
+	Writing:for {
 		select {
 		case <-t.ctx.Done():
 			log.Printf("writer done because %s", t.ctx.Err())
-			return
+			break Writing
 		case chunk := <-t.tunnelRecvChunks:
-			for {
+			Write1Chunk:for {
 				_, err := t.ep.Write(chunk, nil)
-				if err != nil {
-					if err == tcpip.ErrWouldBlock {
-						<-notifyCh
-						continue
+				if err != nil && err == tcpip.ErrWouldBlock {
+					select {
+					case <-t.ctx.Done():
+						log.Printf("writer done because %s", t.ctx.Err())
+						break Writing
+					case <-notifyCh:
+						continue Write1Chunk
+					case <-time.After(writeTimeout):
+						t.quit(ErrTimeout)
+						break Writing
 					}
-
-					log.Print(err)
-					t.quit(err.Error())
-					return
+				} else if err != nil {
+					t.quit(err)
+					break Writing
 
 				} else {
-					break
+					break Write1Chunk
 				}
 			}
 		}
@@ -169,20 +180,19 @@ func (t *Tunnel) writer() {
 
 func (t *Tunnel) tunnelReader() {
 
-	for {
+	Reading:for {
 		select {
 		case <-t.ctx.Done():
 			log.Printf("tunnel reader done because %s", t.ctx.Err())
-			return
+			break Reading
 
 		default:
 			data := make([]byte, readBufSize)
-			t.connOut.SetReadDeadline(time.Now().Add(ioTimeout))
+			t.connOut.SetReadDeadline(time.Now().Add(readTimeout))
 			n, err := t.connOut.Read(data)
 			if err != nil {
-				log.Print(err)
-				t.quit(err.Error())
-				return
+				t.quit(err)
+				break Reading
 			}
 			if n > 0 {
 				log.Printf("receive a packet from tunnel[%s]\n", t.Id.ToString())
@@ -196,36 +206,33 @@ func (t *Tunnel) tunnelReader() {
 
 func (t *Tunnel) tunnelWriter() {
 
-	for {
+	Writing:for {
 		select {
 		case <-t.ctx.Done():
 			log.Printf("tunnel writer done because %s", t.ctx.Err())
-			return
-
+			break Writing
 		case chunk := <-t.recvChunks:
-			for {
+			Write1Chunk:for {
+				t.connOut.SetWriteDeadline(time.Now().Add(writeTimeout))
 				n, err := t.connOut.Write(chunk)
 				if err != nil {
-					log.Print(err)
-					t.quit(err.Error())
-					return
-				}
-
-				if n < len(chunk) {
+					t.quit(err)
+					break Writing
+				} else if n < len(chunk) {
 					chunk = chunk[n:]
-					continue
+					continue Write1Chunk
+				} else {
+					log.Printf("Write a packet to tunnel[%s]\n", t.Id.ToString())
+					break Write1Chunk
 				}
-				log.Printf("Write a packet to tunnel[%s]\n", t.Id.ToString())
-				break
 			}
-
 		}
 	}
 
 	return
 }
 
-func (t *Tunnel) quit(reason string)  {
+func (t *Tunnel) quit(reason error) {
 
 	t.quitOne.Do(func() {
 		status := t.Status()
@@ -234,6 +241,7 @@ func (t *Tunnel) quit(reason string)  {
 			log.Printf("unexpected status %d", status)
 		}
 
+		log.Printf("%s\n", reason.Error())
 		t.SetStatus(StatusClosing)
 		t.ctxCancel()
 		t.connOut.Close()
