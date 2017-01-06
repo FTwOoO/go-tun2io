@@ -25,7 +25,7 @@ create net interface with ip 192.168.4.1/24:
     ip route delete 0.0.0.0/0 metric 0 via 45.76.196.1 dev ens3
     ```
 
-    show the system routing table by runing `route -n`:
+show the system routing table by runing `route -n`:
 
     ```
     Kernel IP routing table
