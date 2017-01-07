@@ -119,7 +119,7 @@ func (t *Tunnel) reader() {
 		if err != nil && err == tcpip.ErrWouldBlock {
 			select {
 			case <-t.ctx.Done():
-				log.Printf("reader done because %s", t.ctx.Err())
+				log.Printf("reader done because of '%s'", t.ctx.Err())
 				break Reading
 			case <-notifyCh:
 				continue Reading
@@ -148,7 +148,7 @@ func (t *Tunnel) writer() {
 	Writing:for {
 		select {
 		case <-t.ctx.Done():
-			log.Printf("writer done because %s", t.ctx.Err())
+			log.Printf("writer done because of '%s'", t.ctx.Err())
 			break Writing
 		case chunk := <-t.tunnelRecvChunks:
 			Write1Chunk:for {
@@ -156,7 +156,7 @@ func (t *Tunnel) writer() {
 				if err != nil && err == tcpip.ErrWouldBlock {
 					select {
 					case <-t.ctx.Done():
-						log.Printf("writer done because %s", t.ctx.Err())
+						log.Printf("writer done because of '%s'", t.ctx.Err())
 						break Writing
 					case <-notifyCh:
 						continue Write1Chunk
@@ -183,7 +183,7 @@ func (t *Tunnel) tunnelReader() {
 	Reading:for {
 		select {
 		case <-t.ctx.Done():
-			log.Printf("tunnel reader done because %s", t.ctx.Err())
+			log.Printf("tunnel reader done because of '%s'", t.ctx.Err())
 			break Reading
 
 		default:
@@ -209,7 +209,7 @@ func (t *Tunnel) tunnelWriter() {
 	Writing:for {
 		select {
 		case <-t.ctx.Done():
-			log.Printf("tunnel writer done because %s", t.ctx.Err())
+			log.Printf("tunnel writer done because of '%s'", t.ctx.Err())
 			break Writing
 		case chunk := <-t.recvChunks:
 			Write1Chunk:for {

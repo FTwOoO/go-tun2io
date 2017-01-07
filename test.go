@@ -35,7 +35,7 @@ import (
 
 var socksAddr string = "52.69.162.110:1080"
 var defaultDnsServer = net.IP{8, 8, 8, 8}
-const dnsReqFre = 3*time.Second
+const dnsReqFre = 15 * time.Second
 
 func main() {
 	if len(os.Args) != 4 {

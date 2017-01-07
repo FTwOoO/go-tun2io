@@ -62,9 +62,41 @@ func NewTun2ioManager(s tcpip.Stack, defaultDialer proxy.Dialer) (*Tun2ioManager
 
 func (m *Tun2ioManager) MainLoop() {
 	for {
-		time.Sleep(5 * time.Second)
-		log.Printf(m.stack.(*stack.Stack).PrintNicTransportStats())
+		time.Sleep(2 * time.Second)
+		s := "\n==========================>\n"
+		s += m.stack.(*stack.Stack).PrintNicTransportStats()
+		s += m.GetDebugStats()
+		s += "<--------------------------\n"
+		log.Print(s)
+
 	}
+}
+
+func (m *Tun2ioManager) GetDebugStats() string {
+	var ret string = "tunnels:\n"
+
+	for tid, _ := range m.tunnels {
+		ret += tid.ToString() + "\n"
+	}
+
+	ret += "tcpListeners:\n"
+	for tid, _ := range m.tcpListeners {
+		ret += tid.ToString() + "\n"
+	}
+
+	ret += "tcpListener2TcpTunnels:\n"
+	for tid, arr := range m.tcpListener2TcpTunnels {
+		if len(arr) == 0 {
+			continue
+		}
+
+		ret += tid.ToString() + "=>"
+		for _, tid2 := range arr {
+			ret += tid2.ToString() + "\n"
+		}
+	}
+
+	return ret
 }
 
 func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID, vv *buffer.VectorisedView) bool {
@@ -75,7 +107,6 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 	listenId := id
 	listenId.RemoteAddress = ""
 	listenId.RemotePort = 0
-	log.Printf("Try to find endpoint for id[%s] and listen id[%s]\n", id.ToString(), listenId.ToString())
 
 	demux := m.stack.(*stack.Stack).GetDemuxer(m.NID)
 	if demux.IsEndpointExist(netProto, protocol, id) || demux.IsEndpointExist(netProto, protocol, listenId) {
@@ -105,7 +136,7 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 				m.tunnelsMu.Lock()
 				if arr, ok := m.tcpListener2TcpTunnels[listenerId]; !ok || len(arr) == 0 {
 
-					log.Fatal("Accept() timeout, and Closed!\n")
+					log.Print("Accept() timeout, and Closed!\n")
 					l.Close()
 					delete(m.tcpListeners, listenerId)
 					m.tunnelsMu.Unlock()
@@ -161,8 +192,8 @@ func (m *Tun2ioManager) endpointClosed(id TransportID) {
 		listenerId.SrcAddress = ""
 
 		if arr, ok := m.tcpListener2TcpTunnels[listenerId]; ok {
-			if goset.IsIncluded(arr, listenerId) {
-				m.tcpListener2TcpTunnels[listenerId] = goset.RemoveElement(arr, listenerId).([]TransportID)
+			if goset.IsIncluded(arr, id) {
+				m.tcpListener2TcpTunnels[listenerId] = goset.RemoveElement(arr, id).([]TransportID)
 			}
 		}
 	}

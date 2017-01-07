@@ -45,7 +45,7 @@ func NewTcpListener(s tcpip.Stack, nid tcpip.NICID, netProto tcpip.NetworkProtoc
 
 	protocol := header.TCPProtocolNumber
 	var wq waiter.Queue
-	ep, err := s.NewEndpoint(protocol, netProto, wq)
+	ep, err := s.NewEndpoint(protocol, netProto, &wq)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func NewTcpListener(s tcpip.Stack, nid tcpip.NICID, netProto tcpip.NetworkProtoc
 		remoteAddress:listenerId.RemoteAddress,
 		remotePort:listenerId.RemotePort,
 		notifyCh:notifyCh,
-		wq:wq,
+		wq:&wq,
 		waitEndry:waitEntry,
 	}
 	m.ctx, m.ctxCancel = context.WithCancel(context.Background())

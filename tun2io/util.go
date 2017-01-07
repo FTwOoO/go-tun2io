@@ -20,6 +20,7 @@ package tun2io
 import (
 	"strings"
 	"log"
+	"fmt"
 	"net"
 	"github.com/FTwOoO/netstack/tcpip"
 	"github.com/FTwOoO/netstack/tcpip/link/fdbased"
@@ -28,7 +29,6 @@ import (
 	"github.com/FTwOoO/netstack/tcpip/stack"
 	"github.com/FTwOoO/netstack/tcpip/transport/tcp"
 	"github.com/FTwOoO/netstack/waiter"
-	"fmt"
 	"github.com/FTwOoO/netstack/tcpip/transport/udp"
 )
 
