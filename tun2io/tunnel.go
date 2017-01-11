@@ -18,7 +18,7 @@ package tun2io
 
 import (
 	"net"
-	"golang.org/x/net/context"
+	"context"
 	"sync"
 	"time"
 	"github.com/FTwOoO/netstack/tcpip"
@@ -30,23 +30,23 @@ import (
 )
 
 type Tunnel struct {
-	Id               TransportID
-	wq               *waiter.Queue
-	ep               tcpip.Endpoint
+	Id                TransportID
+	wq                *waiter.Queue
+	ep                tcpip.Endpoint
 
-	connOut          net.Conn
+	connOut           net.Conn
 
-	status           TunnelStatus
-	statusMu         sync.Mutex
+	status            TunnelStatus
+	statusMu          sync.Mutex
 
-	tunnelRecvChunks chan []byte
-	recvChunks       chan []byte
+	tunnelRecvPackets chan []byte
+	recvPackets       chan []byte
 
-	ctx              context.Context
-	ctxCancel        context.CancelFunc
-	closeCallback    func(TransportID)
+	ctx               context.Context
+	ctxCancel         context.CancelFunc
+	closeCallback     func(TransportID)
 
-	quitOne          sync.Once
+	closeOne          sync.Once
 }
 
 func NewTunnel(network string, wq *waiter.Queue, ep tcpip.Endpoint, dialer proxy.Dialer, closeCallback func(TransportID)) (*Tunnel, error) {
@@ -65,8 +65,8 @@ func NewTunnel(network string, wq *waiter.Queue, ep tcpip.Endpoint, dialer proxy
 		Id:id,
 		wq:wq,
 		ep:ep,
-		tunnelRecvChunks:make(chan []byte, 256),
-		recvChunks:make(chan []byte, 256),
+		tunnelRecvPackets:make(chan []byte, 256),
+		recvPackets:make(chan []byte, 256),
 		closeCallback: closeCallback,
 	}
 
@@ -124,14 +124,14 @@ func (t *Tunnel) reader() {
 			case <-notifyCh:
 				continue Reading
 			case <-time.After(readTimeout):
-				t.quit(ErrTimeout)
+				t.Close(ErrTimeout)
 				break Reading
 			}
 		} else if err != nil {
-			t.quit(err)
+			t.Close(err)
 			break Reading
 		} else {
-			t.recvChunks <- v
+			t.recvPackets <- v
 			continue Reading
 		}
 	}
@@ -142,7 +142,7 @@ func (t *Tunnel) reader() {
 func (t *Tunnel) writer() {
 	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
 
-	t.wq.EventRegister(&waitEntry, waiter.EventIn)
+	t.wq.EventRegister(&waitEntry, waiter.EventOut)
 	defer t.wq.EventUnregister(&waitEntry)
 
 	Writing:for {
@@ -150,8 +150,8 @@ func (t *Tunnel) writer() {
 		case <-t.ctx.Done():
 			log.Printf("writer done because of '%s'", t.ctx.Err())
 			break Writing
-		case chunk := <-t.tunnelRecvChunks:
-			Write1Chunk:for {
+		case chunk := <-t.tunnelRecvPackets:
+			Write1Packet:for {
 				_, err := t.ep.Write(chunk, nil)
 				if err != nil && err == tcpip.ErrWouldBlock {
 					select {
@@ -159,17 +159,17 @@ func (t *Tunnel) writer() {
 						log.Printf("writer done because of '%s'", t.ctx.Err())
 						break Writing
 					case <-notifyCh:
-						continue Write1Chunk
+						continue Write1Packet
 					case <-time.After(writeTimeout):
-						t.quit(ErrTimeout)
+						t.Close(ErrTimeout)
 						break Writing
 					}
 				} else if err != nil {
-					t.quit(err)
+					t.Close(err)
 					break Writing
 
 				} else {
-					break Write1Chunk
+					break Write1Packet
 				}
 			}
 		}
@@ -191,12 +191,12 @@ func (t *Tunnel) tunnelReader() {
 			t.connOut.SetReadDeadline(time.Now().Add(readTimeout))
 			n, err := t.connOut.Read(data)
 			if err != nil {
-				t.quit(err)
+				t.Close(err)
 				break Reading
 			}
 			if n > 0 {
 				log.Printf("receive a packet from tunnel[%s]\n", t.Id.ToString())
-				t.tunnelRecvChunks <- data[0:n]
+				t.tunnelRecvPackets <- data[0:n]
 			}
 		}
 	}
@@ -211,19 +211,19 @@ func (t *Tunnel) tunnelWriter() {
 		case <-t.ctx.Done():
 			log.Printf("tunnel writer done because of '%s'", t.ctx.Err())
 			break Writing
-		case chunk := <-t.recvChunks:
-			Write1Chunk:for {
+		case chunk := <-t.recvPackets:
+			Write1Packet:for {
 				t.connOut.SetWriteDeadline(time.Now().Add(writeTimeout))
 				n, err := t.connOut.Write(chunk)
 				if err != nil {
-					t.quit(err)
+					t.Close(err)
 					break Writing
 				} else if n < len(chunk) {
 					chunk = chunk[n:]
-					continue Write1Chunk
+					continue Write1Packet
 				} else {
 					log.Printf("Write a packet to tunnel[%s]\n", t.Id.ToString())
-					break Write1Chunk
+					break Write1Packet
 				}
 			}
 		}
@@ -232,9 +232,9 @@ func (t *Tunnel) tunnelWriter() {
 	return
 }
 
-func (t *Tunnel) quit(reason error) {
+func (t *Tunnel) Close(reason error) {
 
-	t.quitOne.Do(func() {
+	t.closeOne.Do(func() {
 		status := t.Status()
 
 		if status != StatusProxying {

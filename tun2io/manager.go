@@ -217,7 +217,6 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 		return false
 	}
 
-	//id.LocalAddress:id.LocalPort is the target ip-port pair
 	if err := ep.Bind(tcpip.FullAddress{m.NID, id.LocalAddress, id.LocalPort}, nil); err != nil {
 		log.Fatal("Bind failed: ", err)
 		return false

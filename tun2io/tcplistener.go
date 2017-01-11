@@ -23,7 +23,7 @@ import (
 	"github.com/FTwOoO/netstack/tcpip"
 	"github.com/FTwOoO/netstack/waiter"
 	"github.com/FTwOoO/netstack/tcpip/header"
-	"golang.org/x/net/context"
+	"context"
 	"time"
 )
 
@@ -38,7 +38,7 @@ type TcpListener struct {
 
 	ctx           context.Context
 	ctxCancel     context.CancelFunc
-	quitOne       sync.Once
+	closeOne      sync.Once
 }
 
 func NewTcpListener(s tcpip.Stack, nid tcpip.NICID, netProto tcpip.NetworkProtocolNumber, listenerId TransportID) (m *TcpListener, err error) {
@@ -74,7 +74,6 @@ func NewTcpListener(s tcpip.Stack, nid tcpip.NICID, netProto tcpip.NetworkProtoc
 	return
 }
 
-// The queue returned is own by returned endpoint(private element)
 func (t *TcpListener) Accept() (tcpip.Endpoint, *waiter.Queue, error) {
 
 	AcceptLoop:for {
@@ -102,10 +101,8 @@ func (t *TcpListener) Accept() (tcpip.Endpoint, *waiter.Queue, error) {
 
 }
 
-// Close closes the listener.
-// Any blocked Accept operations will be unblocked and return errors.
 func (t *TcpListener) Close() error {
-	t.quitOne.Do(func() {
+	t.closeOne.Do(func() {
 		t.wq.EventUnregister(&t.waitEndry)
 		t.endpoint.Close()
 		t.ctxCancel()
