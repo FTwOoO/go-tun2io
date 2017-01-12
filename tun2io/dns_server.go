@@ -79,7 +79,7 @@ type DnsServer struct {
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
-	quitOne   sync.Once
+	closeOne  sync.Once
 }
 
 func CreateDnsServer(udpEp *UdpEndpoint, handler dns.Handler) (*DnsServer, error) {
@@ -119,7 +119,7 @@ func (d *DnsServer) reader() {
 
 
 func (d *DnsServer) Close(reason error) error {
-	d.quitOne.Do(func() {
+	d.closeOne.Do(func() {
 		log.Printf("DnsServer Closed:%s\n", reason.Error())
 		d.udpEp.Close(reason)
 		d.ctxCancel()
