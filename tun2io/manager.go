@@ -41,9 +41,10 @@ type Tun2ioManager struct {
 	tcpListener2TcpTunnels map[TransportID][]TransportID
 
 	NID                    tcpip.NICID
+	Subnets                []tcpip.Subnet
 }
 
-func NewTun2ioManager(s tcpip.Stack, defaultDialer proxy.Dialer) (*Tun2ioManager, error) {
+func NewTun2ioManager(s tcpip.Stack, nicid tcpip.NICID, defaultDialer proxy.Dialer) (*Tun2ioManager, error) {
 
 	m := &Tun2ioManager{
 		stack:s,
@@ -51,8 +52,10 @@ func NewTun2ioManager(s tcpip.Stack, defaultDialer proxy.Dialer) (*Tun2ioManager
 		tcpListeners: make(map[TransportID]*TcpListener, 0),
 		tcpListener2TcpTunnels: make(map[TransportID][]TransportID, 0),
 		defaultDialer:defaultDialer,
-		NID: 1,
+		NID: nicid,
 	}
+
+	m.Subnets = s.NICSubnets()[nicid]
 
 	s.(*stack.Stack).SetTransportProtocolHandler(header.TCPProtocolNumber, m.tcpHandler)
 	s.(*stack.Stack).SetTransportProtocolHandler(header.UDPProtocolNumber, m.udpHandler)
@@ -103,10 +106,15 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 	protocol := header.TCPProtocolNumber
 	netProto := r.NetProto
 
-	//TODO: check if its local ip/local subnet ip
 	listenId := id
 	listenId.RemoteAddress = ""
 	listenId.RemotePort = 0
+
+	//ignore packets to local
+	if m.isTargetLocal(id.LocalAddress) {
+		log.Printf("Ignore packet of id %v\n", id.ToString())
+		return false
+	}
 
 	demux := m.stack.(*stack.Stack).GetDemuxer(m.NID)
 	if demux.IsEndpointExist(netProto, protocol, id) || demux.IsEndpointExist(netProto, protocol, listenId) {
@@ -203,6 +211,11 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 	protocol := header.UDPProtocolNumber
 	netProto := r.NetProto
 
+	if m.isTargetLocal(id.LocalAddress) {
+		log.Printf("Ignore packet of id %v\n", id.ToString())
+		return false
+	}
+
 	demux := m.stack.(*stack.Stack).GetDemuxer(m.NID)
 	if demux.IsEndpointExist(netProto, protocol, id) {
 		return false
@@ -218,7 +231,7 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 	}
 
 	if err := ep.Bind(tcpip.FullAddress{m.NID, id.LocalAddress, id.LocalPort}, nil); err != nil {
-		log.Fatal("Bind failed: ", err)
+		log.Fatal("Bind failed2: ", err)
 		return false
 	}
 
@@ -242,4 +255,13 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 	nic := m.stack.(*stack.Stack).GetNic(m.NID)
 	nic.DeliverTransportPacket(r, protocol, vv)
 	return true
+}
+
+func (m *Tun2ioManager) isTargetLocal(addr tcpip.Address) bool {
+	for _, sn := range m.Subnets {
+		if sn.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }

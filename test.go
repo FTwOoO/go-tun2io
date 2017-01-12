@@ -94,7 +94,7 @@ func main() {
 	//go remoteDNSTest(parsedAddr, s, linkId, 1)
 	go localDNSServerTest(parsedAddr, s, linkId, 1)
 
-	manager, err := tun2io.NewTun2ioManager(s, dialer)
+	manager, err := tun2io.NewTun2ioManager(s, 1, dialer)
 	manager.MainLoop()
 }
 

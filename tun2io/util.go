@@ -63,9 +63,23 @@ func CreateStack(mainAddr net.IP, nicid tcpip.NICID, linkEndpointId tcpip.LinkEn
 		return nil, err
 	}
 
-
 	if err := s.AddAddress(nicid, proto, addr); err != nil {
 		log.Fatal(err)
+		return nil, err
+	}
+
+	nIp :=mainAddr.To4()
+	nIp = net.IPv4(nIp[0], nIp[1], nIp[2], nIp[3]).To4()
+	nIp[3] = 0
+
+	mask := tcpip.AddressMask("\xff\xff\xff\x00")
+	subnet, err := tcpip.NewSubnet(tcpip.Address(nIp), mask)
+	if err != nil {
+		return nil, err
+	}
+
+
+	if err := s.(*stack.Stack).AddSubnet(nicid, proto, subnet); err != nil {
 		return nil, err
 	}
 

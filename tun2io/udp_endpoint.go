@@ -43,7 +43,7 @@ type UdpEndpoint struct {
 
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
-	closeOne      sync.Once
+	closeOne     sync.Once
 }
 
 func CreateUdpEndpoint(s tcpip.Stack, netProto tcpip.NetworkProtocolNumber, addr tcpip.FullAddress) (*UdpEndpoint, error) {
@@ -57,10 +57,11 @@ func CreateUdpEndpoint(s tcpip.Stack, netProto tcpip.NetworkProtocolNumber, addr
 	defer ep.Close()
 
 	if err := ep.Bind(addr, nil); err != nil {
-		log.Fatal("Bind failed: ", err)
+		log.Fatal("Bind failed1: ", err)
 	}
 
-	u := &UdpEndpoint{endpoint:ep,
+	u := &UdpEndpoint{
+		endpoint:ep,
 		bindAddr:addr,
 		wq:&wq,
 		RecvPackets:make(chan UdpPacket, 100),
