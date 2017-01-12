@@ -43,7 +43,7 @@ type UdpEndpoint struct {
 
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
-	quitOne      sync.Once
+	closeOne      sync.Once
 }
 
 func CreateUdpEndpoint(s tcpip.Stack, netProto tcpip.NetworkProtocolNumber, addr tcpip.FullAddress) (*UdpEndpoint, error) {
@@ -146,7 +146,7 @@ func (t *UdpEndpoint) writer() {
 }
 
 func (t *UdpEndpoint) Close(reason error) error {
-	t.quitOne.Do(func() {
+	t.closeOne.Do(func() {
 		log.Printf("UdpEndpoint Closed:%s\n", reason.Error())
 		t.endpoint.Close()
 		t.ctxCancel()
