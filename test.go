@@ -20,13 +20,12 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"os"
 	"time"
-	"github.com/FTwOoO/netstack/tcpip/link/rawfile"
-	"github.com/FTwOoO/netstack/tcpip/link/tun"
 	"./tun2io"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/FTwOoO/netstack/tcpip/link/rawfile"
+	"github.com/FTwOoO/netstack/tcpip/link/tun"
 	"github.com/FTwOoO/netstack/tcpip/stack"
 	"github.com/FTwOoO/netstack/tcpip/buffer"
 	"github.com/FTwOoO/netstack/tcpip/header"
@@ -38,20 +37,13 @@ import (
 
 var socksAddr string = "52.69.162.110:1080"
 var defaultRemoteDnsServer = net.IP{8, 8, 8, 8}
+var addrName = "192.168.4.1/24"
+var tunName = "tun2"
 
 const dnsReqFre = 15 * time.Second
 
 func main() {
-	if len(os.Args) != 4 {
-		log.Fatal("Usage: ", os.Args[0], " <tun-device> <local-address> <socks5 server>")
-	}
-
-	tunName := os.Args[1]
-	addrName := os.Args[2]
-	socksAddr = os.Args[3]
-
 	rand.Seed(time.Now().UnixNano())
-
 	parsedAddr, _, err := net.ParseCIDR(addrName)
 	if err != nil {
 		log.Fatalf("Bad IP address: %v", addrName)
@@ -84,12 +76,12 @@ func main() {
 
 	handlerServ, _ := dnsrelay.NewDNSServer(
 		&dnsrelay.Config{
-			DefaultGroups:"serv",
+			DefaultGroups:[]string{"serv"},
 			DNSCache:dnsrelay.DNSCache{Backend:"memory", Expire:3600, Maxcount:500},
-			DNSGroups:{"serv":[]addr.DNSAddresss{Ip:defaultRemoteDnsServer, Port:53}},
+			DNSGroups:map[string][]addr.DNSAddresss{"serv":[]addr.DNSAddresss{{Ip:defaultRemoteDnsServer, Port:53}}},
 		}, true)
 
-	_, err  = tun2io.CreateDnsServer(ep, handlerServ)
+	_, err = tun2io.CreateDnsServer(ep, handlerServ)
 	if err != nil {
 		log.Fatal(err)
 	}
