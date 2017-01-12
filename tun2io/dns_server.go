@@ -27,8 +27,8 @@ import (
 )
 
 type sessionWriter struct {
-	remoteAddr     tcpip.FullAddress         // address of the client
-	output 	       chan UdpPacket
+	remoteAddr tcpip.FullAddress // address of the client
+	writeChan  chan UdpPacket
 }
 
 // WriteMsg implements the ResponseWriter.WriteMsg method.
@@ -45,18 +45,20 @@ func (w *sessionWriter) WriteMsg(m *dns.Msg) (err error) {
 
 // Write implements the ResponseWriter.Write method.
 func (w *sessionWriter) Write(m []byte) (int, error) {
-	w.output <- UdpPacket{Data:m, Addr:w.remoteAddr}
+	w.writeChan <- UdpPacket{Data:m, Addr:w.remoteAddr}
 	return len(m), nil
 
 }
 
 // LocalAddr implements the ResponseWriter.LocalAddr method.
 func (w *sessionWriter) LocalAddr() net.Addr {
-	return *net.UDPAddr{IP:[]byte{}, Port:0, Zone:""}
+	return &net.UDPAddr{IP:[]byte{}, Port:0, Zone:""}
 }
 
 // RemoteAddr implements the ResponseWriter.RemoteAddr method.
-func (w *sessionWriter) RemoteAddr() net.Addr { return w.remoteAddr }
+func (w *sessionWriter) RemoteAddr() net.Addr {
+	return &net.UDPAddr{IP:net.ParseIP(w.remoteAddr.Addr.String()), Port:int(w.remoteAddr.Port)}
+}
 
 // TsigStatus implements the ResponseWriter.TsigStatus method.
 func (w *sessionWriter) TsigStatus() error { return nil }
@@ -75,7 +77,7 @@ func (w *sessionWriter) Close() error {
 
 type DnsServer struct {
 	udpEp     *UdpEndpoint
-	handler   *dns.Handler
+	Handler   dns.Handler
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -83,7 +85,7 @@ type DnsServer struct {
 }
 
 func CreateDnsServer(udpEp *UdpEndpoint, handler dns.Handler) (*DnsServer, error) {
-	d := &DnsServer{udpEp:udpEp, handler:handler}
+	d := &DnsServer{udpEp:udpEp, Handler:handler}
 	d.ctx, d.ctxCancel = context.WithCancel(context.Background())
 
 	go d.reader()
@@ -94,19 +96,20 @@ func (d *DnsServer) reader() {
 	Reading:for {
 		select {
 		case udpPacket := <-d.udpEp.RecvPackets:
-			w := &sessionWriter{remoteAddr: udpPacket.Addr, output:d.udpEp.WritePackets}
+			w := &sessionWriter{remoteAddr: udpPacket.Addr, writeChan:d.udpEp.WritePackets}
 
 			req := new(dns.Msg)
 			err := req.Unpack(udpPacket.Data)
 			if err != nil {
-				// Send a FormatError back
 				x := new(dns.Msg)
 				x.SetRcodeFormatError(req)
 				w.WriteMsg(x)
 				w.Close()
 			}
 
-			d.handler.ServeDNS(w, req) // Writes back to the client
+			if d.Handler != nil {
+				d.Handler.ServeDNS(w, req)
+			}
 			w.Close()
 
 

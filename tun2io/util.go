@@ -38,7 +38,7 @@ func CreateFdLinkEndpoint(fd int, mtu int) (tcpip.LinkEndpointID, error) {
 }
 
 
-func CreateStack(mainAddr net.IP, linkEndpointId tcpip.LinkEndpointID) (tcpip.Stack, error) {
+func CreateStack(mainAddr net.IP, nicid tcpip.NICID, linkEndpointId tcpip.LinkEndpointID) (tcpip.Stack, error) {
 	var addr tcpip.Address
 	var proto tcpip.NetworkProtocolNumber
 
@@ -58,13 +58,13 @@ func CreateStack(mainAddr net.IP, linkEndpointId tcpip.LinkEndpointID) (tcpip.St
 	// Create the stack with ip and tcp protocols, then add a tun-based
 	// NIC and address.
 	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName})
-	if err := s.CreateNIC(1, linkEndpointId); err != nil {
+	if err := s.CreateNIC(nicid, linkEndpointId); err != nil {
 		log.Fatal(err)
 		return nil, err
 	}
 
 
-	if err := s.AddAddress(1, proto, addr); err != nil {
+	if err := s.AddAddress(nicid, proto, addr); err != nil {
 		log.Fatal(err)
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func CreateStack(mainAddr net.IP, linkEndpointId tcpip.LinkEndpointID) (tcpip.St
 			Destination: tcpip.Address(strings.Repeat("\x00", len(addr))),
 			Mask:        tcpip.Address(strings.Repeat("\x00", len(addr))),
 			Gateway:     "",
-			NIC:         1,
+			NIC:         nicid,
 		},
 	})
 
