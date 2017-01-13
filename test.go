@@ -33,10 +33,12 @@ import (
 	"github.com/FTwOoO/netstack/tcpip/network/ipv4"
 	"github.com/FTwOoO/dnsrelay/dnsrelay"
 	"github.com/FTwOoO/vpncore/net/addr"
+	"github.com/FTwOoO/go-logger"
 )
 
 var socksAddr string = "52.69.162.110:1080"
 var defaultRemoteDnsServer = net.IP{8, 8, 8, 8}
+var defaultDNSPort uint16 = 53
 var addrName = "192.168.4.1/24"
 var tunName = "tun2"
 
@@ -78,7 +80,8 @@ func main() {
 		&dnsrelay.Config{
 			DefaultGroups:[]string{"serv"},
 			DNSCache:dnsrelay.DNSCache{Backend:"memory", Expire:3600, Maxcount:500},
-			DNSGroups:map[string][]addr.DNSAddresss{"serv":[]addr.DNSAddresss{{Ip:defaultRemoteDnsServer, Port:53}}},
+			DNSGroups:map[string][]addr.DNSAddresss{"serv":[]addr.DNSAddresss{{Ip:defaultRemoteDnsServer, Port:defaultDNSPort}}},
+			LogConfig:dnsrelay.LogConfig{LogLevel:logger.DEBUG},
 		}, true)
 
 	_, err = tun2io.CreateDnsServer(ep, handlerServ)
@@ -91,46 +94,56 @@ func main() {
 		log.Fatal(err)
 	}
 
-	//go remoteDNSTest(parsedAddr, s, linkId, 1)
+	go remoteDNSTest(parsedAddr, s, linkId, 1)
 	go localDNSServerTest(parsedAddr, s, linkId, 1)
 
 	manager, err := tun2io.NewTun2ioManager(s, 1, dialer)
 	manager.MainLoop()
 }
 
-func remoteDNSTest(srcAddr net.IP, s tcpip.Stack, linkId tcpip.LinkEndpointID, nid tcpip.NICID) error {
-	for {
-		ep := stack.FindLinkEndpoint(linkId)
-		if ep == nil {
-			log.Fatalf("Endpoint not found:%d", linkId)
-			return tcpip.ErrBadLinkEndpoint
-		}
+func injectIpv4Packet(s tcpip.Stack, linkId tcpip.LinkEndpointID, nid tcpip.NICID, packetData []byte) {
+	ep := stack.FindLinkEndpoint(linkId)
+	if ep == nil {
+		log.Fatalf("Endpoint not found:%d", linkId)
+		return
+	}
 
-		d := s.(*stack.Stack).GetNic(nid)
+	d := s.(*stack.Stack).GetNic(nid)
 
-		buf := gopacket.NewSerializeBuffer()
-		opts := gopacket.SerializeOptions{FixLengths:true}
-		gopacket.SerializeLayers(buf, opts,
-			&layers.IPv4{SrcIP:srcAddr, DstIP:defaultRemoteDnsServer, Protocol:layers.IPProtocolUDP},
-			&layers.UDP{SrcPort:10078, DstPort:53},
-			&layers.DNS{
-				ID:uint16(rand.Int31() & 0xFFFF),
-				RD: true,
-				OpCode:layers.DNSOpCodeQuery,
-				Questions:[]layers.DNSQuestion{
-					{
-						Name:[]byte("xahlee.info"),
-						Type:layers.DNSTypeA,
-						Class:layers.DNSClassIN,
-					},
+	view := buffer.View(packetData)
+	vv := buffer.NewVectorisedView(len(packetData), []buffer.View{view})
+	d.DeliverNetworkPacket(ep, header.IPv4ProtocolNumber, &vv)
+}
+
+func createDNSRequst(Domain string, SrcIP net.IP, SrcPort uint16, DstIP net.IP, DstPort uint16) []byte {
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{FixLengths:true}
+	gopacket.SerializeLayers(buf, opts,
+		&layers.IPv4{SrcIP:SrcIP, DstIP:DstIP, Protocol:layers.IPProtocolUDP},
+		&layers.UDP{SrcPort:layers.UDPPort(SrcPort), DstPort:layers.UDPPort(DstPort)},
+		&layers.DNS{
+			ID:uint16(rand.Int31() & 0xFFFF),
+			RD: true,
+			OpCode:layers.DNSOpCodeQuery,
+			Questions:[]layers.DNSQuestion{
+				{
+					Name:[]byte(Domain),
+					Type:layers.DNSTypeA,
+					Class:layers.DNSClassIN,
 				},
 			},
-		)
+		},
+	)
 
-		packetData := buf.Bytes()
-		view := buffer.View(packetData)
-		vv := buffer.NewVectorisedView(len(packetData), []buffer.View{view})
-		d.DeliverNetworkPacket(ep, header.IPv4ProtocolNumber, &vv)
+	packetData := buf.Bytes()
+	return packetData
+}
+
+func remoteDNSTest(srcAddr net.IP, s tcpip.Stack, linkId tcpip.LinkEndpointID, nid tcpip.NICID) error {
+	for {
+
+		packetData := createDNSRequst("facebook.com", srcAddr, 10078, defaultRemoteDnsServer, defaultDNSPort)
+		injectIpv4Packet(s, linkId, nid, packetData)
 
 		time.Sleep(dnsReqFre)
 	}
@@ -140,37 +153,9 @@ func remoteDNSTest(srcAddr net.IP, s tcpip.Stack, linkId tcpip.LinkEndpointID, n
 
 func localDNSServerTest(srcAddr net.IP, s tcpip.Stack, linkId tcpip.LinkEndpointID, nid tcpip.NICID) error {
 	for {
-		ep := stack.FindLinkEndpoint(linkId)
-		if ep == nil {
-			log.Fatalf("Endpoint not found:%d", linkId)
-			return tcpip.ErrBadLinkEndpoint
-		}
 
-		d := s.(*stack.Stack).GetNic(nid)
-
-		buf := gopacket.NewSerializeBuffer()
-		opts := gopacket.SerializeOptions{FixLengths:true}
-		gopacket.SerializeLayers(buf, opts,
-			&layers.IPv4{SrcIP:srcAddr, DstIP:srcAddr, Protocol:layers.IPProtocolUDP},
-			&layers.UDP{SrcPort:10078, DstPort:53},
-			&layers.DNS{
-				ID:uint16(rand.Int31() & 0xFFFF),
-				RD: true,
-				OpCode:layers.DNSOpCodeQuery,
-				Questions:[]layers.DNSQuestion{
-					{
-						Name:[]byte("twitter.com"),
-						Type:layers.DNSTypeA,
-						Class:layers.DNSClassIN,
-					},
-				},
-			},
-		)
-
-		packetData := buf.Bytes()
-		view := buffer.View(packetData)
-		vv := buffer.NewVectorisedView(len(packetData), []buffer.View{view})
-		d.DeliverNetworkPacket(ep, header.IPv4ProtocolNumber, &vv)
+		packetData := createDNSRequst("twitter.com", srcAddr, 10079, srcAddr, defaultDNSPort)
+		injectIpv4Packet(s, linkId, nid, packetData)
 
 		time.Sleep(dnsReqFre)
 	}

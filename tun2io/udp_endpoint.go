@@ -54,8 +54,6 @@ func CreateUdpEndpoint(s tcpip.Stack, netProto tcpip.NetworkProtocolNumber, addr
 		log.Fatal(err)
 	}
 
-	defer ep.Close()
-
 	if err := ep.Bind(addr, nil); err != nil {
 		log.Fatal("Bind failed1: ", err)
 	}

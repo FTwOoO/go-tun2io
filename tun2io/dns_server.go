@@ -27,8 +27,12 @@ import (
 )
 
 type sessionWriter struct {
-	remoteAddr tcpip.FullAddress // address of the client
-	writeChan  chan UdpPacket
+	remoteAddr tcpip.FullAddress
+	writeChan  chan <- UdpPacket
+}
+
+func NewSessionWriter(remoteAddr tcpip.FullAddress, writeChan chan <- UdpPacket) (*sessionWriter, error) {
+	return &sessionWriter{remoteAddr:remoteAddr, writeChan:writeChan}, nil
 }
 
 // WriteMsg implements the ResponseWriter.WriteMsg method.
@@ -96,7 +100,7 @@ func (d *DnsServer) reader() {
 	Reading:for {
 		select {
 		case udpPacket := <-d.udpEp.RecvPackets:
-			w := &sessionWriter{remoteAddr: udpPacket.Addr, writeChan:d.udpEp.WritePackets}
+			w, _ := NewSessionWriter(udpPacket.Addr, d.udpEp.WritePackets)
 
 			req := new(dns.Msg)
 			err := req.Unpack(udpPacket.Data)
@@ -106,6 +110,7 @@ func (d *DnsServer) reader() {
 				w.WriteMsg(x)
 				w.Close()
 			}
+
 
 			if d.Handler != nil {
 				d.Handler.ServeDNS(w, req)

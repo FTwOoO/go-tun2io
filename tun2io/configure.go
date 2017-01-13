@@ -21,6 +21,7 @@ import (
 	"time"
 	"github.com/FTwOoO/netstack/tcpip"
 	"fmt"
+	"github.com/FTwOoO/netstack/tcpip/header"
 )
 
 var (
@@ -66,5 +67,13 @@ type TransportID struct {
 }
 
 func (id TransportID) ToString() string {
-	return fmt.Sprintf("%s:%d -> %s:%d", id.SrcAddress, id.SrcPort, id.RemoteAddress, id.RemotePort)
+
+	var protoName string
+	if id.Transport == header.TCPProtocolNumber {
+		protoName = "tcp"
+	} else if id.Transport == header.UDPProtocolNumber {
+		protoName = "udp"
+	}
+
+	return fmt.Sprintf("[%s]%s:%d -> %s:%d", protoName, id.SrcAddress, id.SrcPort, id.RemoteAddress, id.RemotePort)
 }

@@ -32,6 +32,9 @@ import (
 
 type Tun2ioManager struct {
 	stack                  tcpip.Stack
+	nicid                  tcpip.NICID
+	nic                    *stack.NIC
+
 	defaultDialer          proxy.Dialer
 
 	tunnelsMu              sync.Mutex
@@ -39,8 +42,6 @@ type Tun2ioManager struct {
 	tcpListeners           map[TransportID]*TcpListener
 
 	tcpListener2TcpTunnels map[TransportID][]TransportID
-
-	NID                    tcpip.NICID
 	Subnets                []tcpip.Subnet
 }
 
@@ -52,10 +53,11 @@ func NewTun2ioManager(s tcpip.Stack, nicid tcpip.NICID, defaultDialer proxy.Dial
 		tcpListeners: make(map[TransportID]*TcpListener, 0),
 		tcpListener2TcpTunnels: make(map[TransportID][]TransportID, 0),
 		defaultDialer:defaultDialer,
-		NID: nicid,
+		nicid: nicid,
 	}
 
 	m.Subnets = s.NICSubnets()[nicid]
+	m.nic = m.stack.(*stack.Stack).GetNic(m.nicid)
 
 	s.(*stack.Stack).SetTransportProtocolHandler(header.TCPProtocolNumber, m.tcpHandler)
 	s.(*stack.Stack).SetTransportProtocolHandler(header.UDPProtocolNumber, m.udpHandler)
@@ -116,14 +118,14 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 		return false
 	}
 
-	demux := m.stack.(*stack.Stack).GetDemuxer(m.NID)
+	demux := m.stack.(*stack.Stack).GetDemuxer(m.nicid)
 	if demux.IsEndpointExist(netProto, protocol, id) || demux.IsEndpointExist(netProto, protocol, listenId) {
 		return false
 	}
 
 	listenerId := TransportID{Transport:protocol, RemoteAddress: id.LocalAddress, RemotePort:id.LocalPort}
 	log.Printf("Create endpoint with id %s\n", listenerId.ToString())
-	l, err := NewTcpListener(m.stack, m.NID, netProto, listenerId)
+	l, err := NewTcpListener(m.stack, m.nicid, netProto, listenerId)
 	if err != nil {
 		log.Print(err)
 		return false
@@ -165,8 +167,7 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 		}
 	}()
 
-	nic := m.stack.(*stack.Stack).GetNic(m.NID)
-	nic.DeliverTransportPacket(r, protocol, vv)
+	m.nic.DeliverTransportPacket(r, protocol, vv)
 	return true
 }
 
@@ -216,7 +217,7 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 		return false
 	}
 
-	demux := m.stack.(*stack.Stack).GetDemuxer(m.NID)
+	demux := m.stack.(*stack.Stack).GetDemuxer(m.nicid)
 	if demux.IsEndpointExist(netProto, protocol, id) {
 		return false
 	}
@@ -230,12 +231,12 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 		return false
 	}
 
-	if err := ep.Bind(tcpip.FullAddress{m.NID, id.LocalAddress, id.LocalPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{m.nicid, id.LocalAddress, id.LocalPort}, nil); err != nil {
 		log.Fatal("Bind failed2: ", err)
 		return false
 	}
 
-	if err := ep.Connect(tcpip.FullAddress{m.NID, id.RemoteAddress, id.RemotePort}); err != nil {
+	if err := ep.Connect(tcpip.FullAddress{m.nicid, id.RemoteAddress, id.RemotePort}); err != nil {
 		log.Fatal("Connect failed: ", err)
 		return false
 	}
@@ -252,8 +253,7 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 	m.tunnelsMu.Unlock()
 
 	tunnel.Run()
-	nic := m.stack.(*stack.Stack).GetNic(m.NID)
-	nic.DeliverTransportPacket(r, protocol, vv)
+	m.nic.DeliverTransportPacket(r, protocol, vv)
 	return true
 }
 
