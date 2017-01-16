@@ -21,7 +21,6 @@ import (
 	"math/rand"
 	"net"
 	"time"
-	"./tun2io"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/FTwOoO/netstack/tcpip/link/rawfile"
@@ -30,13 +29,9 @@ import (
 	"github.com/FTwOoO/netstack/tcpip/buffer"
 	"github.com/FTwOoO/netstack/tcpip/header"
 	"github.com/FTwOoO/netstack/tcpip"
-	"github.com/FTwOoO/netstack/tcpip/network/ipv4"
-	"github.com/FTwOoO/dnsrelay/dnsrelay"
-	"github.com/FTwOoO/vpncore/net/addr"
-	"github.com/FTwOoO/go-logger"
+	"github.com/FTwOoO/go-tun2io/tun2io"
 )
 
-var defaultNicId tcpip.NICID = 1
 var socksAddr string = "52.69.162.110:1080"
 var defaultRemoteDnsServer = net.IP{8, 8, 8, 8}
 var defaultDNSPort uint16 = 53
@@ -45,9 +40,11 @@ var tunName = "tun2"
 
 const dnsReqFre = 15 * time.Second
 
+
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	parsedAddr, subnet, err := net.ParseCIDR(addrName)
+	parsedIp, subnet, err := net.ParseCIDR(addrName)
 	if err != nil {
 		log.Fatalf("Bad IP address: %v", addrName)
 	}
@@ -67,39 +64,20 @@ func main() {
 		log.Fatal(err)
 	}
 
-	s, err := tun2io.CreateStack(parsedAddr, subnet, defaultNicId, linkId)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	ep, err := tun2io.CreateUdpEndpoint(s, ipv4.ProtocolNumber, tcpip.FullAddress{NIC:defaultNicId, Addr:tcpip.Address(parsedAddr.To4()), Port:53})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	handlerServ, _ := dnsrelay.NewDNSServer(
-		&dnsrelay.Config{
-			DefaultGroups:[]string{"serv"},
-			DNSCache:dnsrelay.DNSCache{Backend:"memory", MinExpire:3600, MaxCount:500},
-			DNSGroups:map[string][]addr.DNSAddresss{"serv":[]addr.DNSAddresss{{Ip:defaultRemoteDnsServer, Port:defaultDNSPort}}},
-			LogConfig:dnsrelay.LogConfig{LogLevel:logger.DEBUG},
-		}, true)
-
-	_, err = tun2io.CreateDnsServer(ep, handlerServ)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	dialer := &tun2io.SOCKS5Dialer{SocksAddr:socksAddr}
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	go remoteDNSTest(parsedAddr, s, linkId, defaultNicId)
-	go localDNSServerTest(parsedAddr, s, linkId, defaultNicId)
+	manager, err := tun2io.Tun2IO(parsedIp, subnet, linkId, true, dialer)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	manager, err := tun2io.NewTun2ioManager(s, defaultNicId, dialer)
+	go remoteDNSTest(parsedIp, manager.GetStack(), linkId, manager.GetNICID())
+	go localDNSServerTest(parsedIp, manager.GetStack(), linkId, manager.GetNICID())
 	manager.MainLoop()
+
 }
 
 func injectIpv4Packet(s tcpip.Stack, linkId tcpip.LinkEndpointID, nid tcpip.NICID, packetData []byte) {

@@ -30,6 +30,8 @@ import (
 	"github.com/FTwOoO/netstack/tcpip/transport/tcp"
 	"github.com/FTwOoO/netstack/waiter"
 	"github.com/FTwOoO/netstack/tcpip/transport/udp"
+	"github.com/FTwOoO/dnsrelay/dnsrelay"
+	"golang.org/x/net/proxy"
 )
 
 func CreateFdLinkEndpoint(fd int, mtu int) (tcpip.LinkEndpointID, error) {
@@ -38,7 +40,7 @@ func CreateFdLinkEndpoint(fd int, mtu int) (tcpip.LinkEndpointID, error) {
 }
 
 
-func CreateStack(mainAddr net.IP, mainNet *net.IPNet, nicid tcpip.NICID, linkEndpointId tcpip.LinkEndpointID) (tcpip.Stack, error) {
+func createStack(mainAddr net.IP, mainNet *net.IPNet, nicid tcpip.NICID, linkEndpointId tcpip.LinkEndpointID) (tcpip.Stack, error) {
 	var addr tcpip.Address
 	var proto tcpip.NetworkProtocolNumber
 
@@ -68,19 +70,12 @@ func CreateStack(mainAddr net.IP, mainNet *net.IPNet, nicid tcpip.NICID, linkEnd
 		return nil, err
 	}
 
-/*	nIp :=mainAddr.To4()
-	nIp = net.IPv4(nIp[0], nIp[1], nIp[2], nIp[3]).To4()
-	nIp[3] = 0*/
-
 	nIp := mainNet.IP.To4()
-
-	//mask := tcpip.AddressMask("\xff\xff\xff\x00")
 	mask := tcpip.AddressMask(mainNet.Mask)
 	subnet, err := tcpip.NewSubnet(tcpip.Address(nIp), mask)
 	if err != nil {
 		return nil, err
 	}
-
 
 	if err := s.(*stack.Stack).AddSubnet(nicid, proto, subnet); err != nil {
 		return nil, err
@@ -97,6 +92,31 @@ func CreateStack(mainAddr net.IP, mainNet *net.IPNet, nicid tcpip.NICID, linkEnd
 	})
 
 	return s, nil
+}
+
+func Tun2IO(ip net.IP, subnet *net.IPNet, linkId tcpip.LinkEndpointID, createDNSEndpoint bool, dialer proxy.Dialer) (*Tun2ioManager, error) {
+
+	s, err := createStack(ip, subnet, defaultNicId, linkId)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if createDNSEndpoint {
+		ep, err := CreateUdpEndpoint(s, ipv4.ProtocolNumber, tcpip.FullAddress{NIC:defaultNicId, Addr:tcpip.Address(ip.To4()), Port:defaultDNSPort})
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		handlerServ, _ := dnsrelay.NewDNSServer(nil, true)
+		_, err = CreateDnsServer(ep, handlerServ)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	manager, err := NewTun2ioManager(s, defaultNicId, dialer)
+
+	return manager, nil
 }
 
 func TcpEcho(wq *waiter.Queue, ep tcpip.Endpoint) {

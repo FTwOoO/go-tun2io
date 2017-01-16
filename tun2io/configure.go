@@ -27,10 +27,13 @@ import (
 var (
 	errBufferIsFull = errors.New("Buffer is full.")
 	errDeviceClosed = errors.New("Device is closed.")
-	ErrTimeout      = errors.New("operation timed out")
+	ErrTimeout = errors.New("operation timed out")
 	readTimeout = time.Second * 60
 	writeTimeout = time.Second * 10
 	listenTimeout = time.Second * 120
+
+	defaultNicId tcpip.NICID = 1
+	defaultDNSPort uint16 = 53
 )
 
 type TunnelStatus uint
@@ -46,8 +49,6 @@ const (
 
 	readBufSize = 1024 * 64
 )
-
-
 
 type TransportID struct {
 	Transport     tcpip.TransportProtocolNumber

@@ -42,7 +42,7 @@ type Tun2ioManager struct {
 	tcpListeners           map[TransportID]*TcpListener
 
 	tcpListener2TcpTunnels map[TransportID][]TransportID
-	Subnets                []tcpip.Subnet
+	subnets                []tcpip.Subnet
 }
 
 func NewTun2ioManager(s tcpip.Stack, nicid tcpip.NICID, defaultDialer proxy.Dialer) (*Tun2ioManager, error) {
@@ -56,13 +56,22 @@ func NewTun2ioManager(s tcpip.Stack, nicid tcpip.NICID, defaultDialer proxy.Dial
 		nicid: nicid,
 	}
 
-	m.Subnets = s.NICSubnets()[nicid]
+	m.subnets = s.NICSubnets()[nicid]
 	m.nic = m.stack.(*stack.Stack).GetNic(m.nicid)
 
 	s.(*stack.Stack).SetTransportProtocolHandler(header.TCPProtocolNumber, m.tcpHandler)
 	s.(*stack.Stack).SetTransportProtocolHandler(header.UDPProtocolNumber, m.udpHandler)
 	s.(*stack.Stack).SetForwardMode(true)
 	return m, nil
+}
+
+func (m *Tun2ioManager) GetStack() tcpip.Stack {
+	return m.stack
+}
+
+
+func (m *Tun2ioManager) GetNICID() tcpip.NICID {
+	return m.nicid
 }
 
 func (m *Tun2ioManager) MainLoop() {
@@ -258,7 +267,7 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 }
 
 func (m *Tun2ioManager) isTargetLocal(addr tcpip.Address) bool {
-	for _, sn := range m.Subnets {
+	for _, sn := range m.subnets {
 		if sn.Contains(addr) {
 			return true
 		}
