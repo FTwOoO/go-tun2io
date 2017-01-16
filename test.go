@@ -36,6 +36,7 @@ import (
 	"github.com/FTwOoO/go-logger"
 )
 
+var defaultNicId tcpip.NICID = 1
 var socksAddr string = "52.69.162.110:1080"
 var defaultRemoteDnsServer = net.IP{8, 8, 8, 8}
 var defaultDNSPort uint16 = 53
@@ -46,7 +47,7 @@ const dnsReqFre = 15 * time.Second
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	parsedAddr, _, err := net.ParseCIDR(addrName)
+	parsedAddr, subnet, err := net.ParseCIDR(addrName)
 	if err != nil {
 		log.Fatalf("Bad IP address: %v", addrName)
 	}
@@ -66,12 +67,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	s, err := tun2io.CreateStack(parsedAddr, 1, linkId)
+	s, err := tun2io.CreateStack(parsedAddr, subnet, defaultNicId, linkId)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	ep, err := tun2io.CreateUdpEndpoint(s, ipv4.ProtocolNumber, tcpip.FullAddress{NIC:1, Addr:tcpip.Address(parsedAddr.To4()), Port:53})
+	ep, err := tun2io.CreateUdpEndpoint(s, ipv4.ProtocolNumber, tcpip.FullAddress{NIC:defaultNicId, Addr:tcpip.Address(parsedAddr.To4()), Port:53})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -94,10 +95,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	go remoteDNSTest(parsedAddr, s, linkId, 1)
-	go localDNSServerTest(parsedAddr, s, linkId, 1)
+	go remoteDNSTest(parsedAddr, s, linkId, defaultNicId)
+	go localDNSServerTest(parsedAddr, s, linkId, defaultNicId)
 
-	manager, err := tun2io.NewTun2ioManager(s, 1, dialer)
+	manager, err := tun2io.NewTun2ioManager(s, defaultNicId, dialer)
 	manager.MainLoop()
 }
 

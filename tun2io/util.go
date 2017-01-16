@@ -38,7 +38,7 @@ func CreateFdLinkEndpoint(fd int, mtu int) (tcpip.LinkEndpointID, error) {
 }
 
 
-func CreateStack(mainAddr net.IP, nicid tcpip.NICID, linkEndpointId tcpip.LinkEndpointID) (tcpip.Stack, error) {
+func CreateStack(mainAddr net.IP, mainNet *net.IPNet, nicid tcpip.NICID, linkEndpointId tcpip.LinkEndpointID) (tcpip.Stack, error) {
 	var addr tcpip.Address
 	var proto tcpip.NetworkProtocolNumber
 
@@ -68,11 +68,14 @@ func CreateStack(mainAddr net.IP, nicid tcpip.NICID, linkEndpointId tcpip.LinkEn
 		return nil, err
 	}
 
-	nIp :=mainAddr.To4()
+/*	nIp :=mainAddr.To4()
 	nIp = net.IPv4(nIp[0], nIp[1], nIp[2], nIp[3]).To4()
-	nIp[3] = 0
+	nIp[3] = 0*/
 
-	mask := tcpip.AddressMask("\xff\xff\xff\x00")
+	nIp := mainNet.IP.To4()
+
+	//mask := tcpip.AddressMask("\xff\xff\xff\x00")
+	mask := tcpip.AddressMask(mainNet.Mask)
 	subnet, err := tcpip.NewSubnet(tcpip.Address(nIp), mask)
 	if err != nil {
 		return nil, err
