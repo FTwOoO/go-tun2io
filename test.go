@@ -79,7 +79,7 @@ func main() {
 	handlerServ, _ := dnsrelay.NewDNSServer(
 		&dnsrelay.Config{
 			DefaultGroups:[]string{"serv"},
-			DNSCache:dnsrelay.DNSCache{Backend:"memory", Expire:3600, Maxcount:500},
+			DNSCache:dnsrelay.DNSCache{Backend:"memory", MinExpire:3600, MaxCount:500},
 			DNSGroups:map[string][]addr.DNSAddresss{"serv":[]addr.DNSAddresss{{Ip:defaultRemoteDnsServer, Port:defaultDNSPort}}},
 			LogConfig:dnsrelay.LogConfig{LogLevel:logger.DEBUG},
 		}, true)
