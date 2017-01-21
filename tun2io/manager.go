@@ -122,7 +122,7 @@ func (m *Tun2ioManager) tcpHandler(r *stack.Route, id stack.TransportEndpointID,
 	listenId.RemotePort = 0
 
 	//ignore packets to local
-	if m.isTargetLocal(id.LocalAddress) {
+	if m.IsLocalAddress(id.LocalAddress) {
 		log.Printf("Ignore packet of id %v\n", id.ToString())
 		return false
 	}
@@ -221,7 +221,7 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 	protocol := header.UDPProtocolNumber
 	netProto := r.NetProto
 
-	if m.isTargetLocal(id.LocalAddress) {
+	if m.IsLocalAddress(id.LocalAddress) {
 		log.Printf("Ignore packet of id %v\n", id.ToString())
 		return false
 	}
@@ -266,7 +266,7 @@ func (m *Tun2ioManager) udpHandler(r *stack.Route, id stack.TransportEndpointID,
 	return true
 }
 
-func (m *Tun2ioManager) isTargetLocal(addr tcpip.Address) bool {
+func (m *Tun2ioManager) IsLocalAddress(addr tcpip.Address) bool {
 	for _, sn := range m.subnets {
 		if sn.Contains(addr) {
 			return true
