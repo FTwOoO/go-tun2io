@@ -15,7 +15,7 @@
  * Author: FTwOoO <booobooob@gmail.com>
  */
 
-package tun2io
+package stack
 
 import (
 	"log"
