@@ -1,4 +1,4 @@
-package ports
+package stack
 
 import (
 	"math"
@@ -47,7 +47,7 @@ const (
 )
 
 type NetworkAddress struct {
-	Type gopacket.EndpointType
+	Type gopacket.LayerType
 	Len  int
 	Raw  [gopacket.MaxEndpointSize]byte
 }
