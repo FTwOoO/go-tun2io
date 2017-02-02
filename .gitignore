@@ -71,3 +71,6 @@ _testmain.go
 *.prof
 .idea
 
+/tun2io/dns_server.go
+/tun2io/tcplistener.go
+/tun2io/udp_endpoint.go
