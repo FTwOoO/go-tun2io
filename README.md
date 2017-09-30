@@ -1,4 +1,5 @@
 # go-tun2io
+ A project turns tcp packets from network interface into proxy.Dialer.
 
 go-tun2io is similar to [tunio](https://github.com/getlantern/tunio) which based on [badvpn-tun2socks](https://github.com/ambrop72/badvpn)/lwip.
 
